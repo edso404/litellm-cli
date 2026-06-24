@@ -30,7 +30,7 @@ clean:
 
 # 测试
 test:
-	go test -v ./...
+	go test -v -race ./...
 
 # 查看帮助
 help:
