@@ -57,8 +57,10 @@ func getDateRange(period string) (string, string) {
 		startDate = now.AddDate(0, 0, -7)
 	case "month":
 		startDate = now.AddDate(0, -1, 0)
-	default: // day
-		startDate = now
+	case "day":
+		startDate = now.AddDate(0, 0, -1) // 昨天到今天
+	default:
+		startDate = now.AddDate(0, 0, -1)
 	}
 
 	return startDate.Format("2006-01-02"), endDate
@@ -78,22 +80,37 @@ func printUserStats(c *client.Client, startDate, endDate string) {
 		return
 	}
 
-	// 显示最新一天的数据
-	latest := resp.Results[0]
-	fmt.Printf("\n📅 %s\n", latest.Date)
-	fmt.Printf("   💰 花费: $%.4f\n", latest.Metrics.Spend)
-	fmt.Printf("   📝 Prompt Tokens: %d\n", latest.Metrics.PromptTokens)
-	fmt.Printf("   ✍️ Completion Tokens: %d\n", latest.Metrics.CompletionTokens)
-	fmt.Printf("   📊 总 Tokens: %d\n", latest.Metrics.TotalTokens)
-	fmt.Printf("   ✅ 成功请求: %d\n", latest.Metrics.SuccessfulRequests)
-	fmt.Printf("   ❌ 失败请求: %d\n", latest.Metrics.FailedRequests)
-	fmt.Printf("   📤 总请求: %d\n", latest.Metrics.APIRequests)
+	// 计算整个时间段的汇总
+	var totalSpend float64
+	var totalPrompt, totalCompletion, totalTokens int64
+	var totalSuccess, totalFailed, totalRequests int64
 
-	// 按模型显示
-	if len(latest.Breakdown.Models) > 0 {
-		fmt.Println("\n📦 按模型:")
-		for model, data := range latest.Breakdown.Models {
-			fmt.Printf("   %s: $%.4f (%d tokens)\n", model, data.Metrics.Spend, data.Metrics.TotalTokens)
+	for _, r := range resp.Results {
+		totalSpend += r.Metrics.Spend
+		totalPrompt += r.Metrics.PromptTokens
+		totalCompletion += r.Metrics.CompletionTokens
+		totalTokens += r.Metrics.TotalTokens
+		totalSuccess += r.Metrics.SuccessfulRequests
+		totalFailed += r.Metrics.FailedRequests
+		totalRequests += r.Metrics.APIRequests
+	}
+
+	// 显示汇总
+	fmt.Println("\n📈 汇总")
+	fmt.Printf("   💰 花费: $%.4f\n", totalSpend)
+	fmt.Printf("   📝 Prompt Tokens: %d\n", totalPrompt)
+	fmt.Printf("   ✍️ Completion Tokens: %d\n", totalCompletion)
+	fmt.Printf("   📊 总 Tokens: %d\n", totalTokens)
+	fmt.Printf("   ✅ 成功请求: %d\n", totalSuccess)
+	fmt.Printf("   ❌ 失败请求: %d\n", totalFailed)
+	fmt.Printf("   📤 总请求: %d\n", totalRequests)
+
+	// 显示最近几天的明细
+	if len(resp.Results) > 1 {
+		fmt.Println("\n📅 最近几天:")
+		for i := 0; i < min(5, len(resp.Results)); i++ {
+			r := resp.Results[i]
+			fmt.Printf("   %s: $%.4f (%d 请求)\n", r.Date, r.Metrics.Spend, r.Metrics.APIRequests)
 		}
 	}
 }
