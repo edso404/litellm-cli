@@ -5,7 +5,7 @@ all: build
 
 # 构建二进制
 build:
-	go build -o litellm-cli .
+	go build -ldflags "-s -w" -o litellm-cli .
 
 # 安装到 ~/.local/bin/
 install: build
@@ -16,9 +16,9 @@ install: build
 # 发布构建 (用于分发)
 release:
 	@mkdir -p release
-	GOOS=darwin GOARCH=amd64 go build -o litellm-cli-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build -o litellm-cli-darwin-arm64 .
-	GOOS=linux GOARCH=amd64 go build -o litellm-cli-linux-amd64 .
+	GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o litellm-cli-darwin-amd64 .
+	GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o litellm-cli-darwin-arm64 .
+	GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o litellm-cli-linux-amd64 .
 	@echo "✅ Release 构建完成:"
 	@ls -lh litellm-cli-*
 
