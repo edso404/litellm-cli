@@ -112,6 +112,23 @@ func clearScreen() {
 	fmt.Print("\033[2J\033[H")
 }
 
+// formatLocalTime 将 UTC 时间转换为本地时区显示
+func formatLocalTime(utcTime string) string {
+	if len(utcTime) >= 19 {
+		// 解析 UTC 时间
+		t, err := time.Parse("2006-01-02T15:04:05", utcTime[:19])
+		if err == nil {
+			// 转换为本地时区并格式化为字符串
+			return t.Local().Format("2006-01-02 15:04")
+		}
+		// 解析失败则回退到简单替换
+		fallback := utcTime[:19]
+		fallback = strings.Replace(fallback, "T", " ", 1)
+		return fallback
+	}
+	return utcTime
+}
+
 func printLogs(c *client.Client, model string, tick int) {
 	// 使用 datetime 格式，并 URL 编码空格
 	endDate := url.QueryEscape(time.Now().Format("2006-01-02 15:04:05"))
@@ -189,11 +206,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 
 		for _, entry := range filteredData {
 			// 时间
-			startTime := entry.StartTime
-			if len(startTime) >= 19 {
-				startTime = startTime[:16]
-				startTime = strings.Replace(startTime, "T", " ", 1)
-			}
+			startTime := formatLocalTime(entry.StartTime)
 			colWidths.time = max(colWidths.time, runewidth.StringWidth(startTime))
 
 			// 状态
@@ -278,11 +291,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 		// 打印数据
 		for _, entry := range filteredData {
 			// 时间
-			startTime := entry.StartTime
-			if len(startTime) >= 19 {
-				startTime = startTime[:16]
-				startTime = strings.Replace(startTime, "T", " ", 1)
-			}
+			startTime := formatLocalTime(entry.StartTime)
 			startTime = padRight(startTime, colWidths.time)
 
 			// 状态
@@ -467,11 +476,7 @@ func renderLogsTable(data []api.SpendLogEntry, total int) string {
 	}
 
 	for _, entry := range data {
-		startTime := entry.StartTime
-		if len(startTime) >= 19 {
-			startTime = startTime[:16]
-			startTime = strings.Replace(startTime, "T", " ", 1)
-		}
+		startTime := formatLocalTime(entry.StartTime)
 		colWidths.time = max(colWidths.time, runewidth.StringWidth(startTime))
 
 		status := "✓"
@@ -547,11 +552,7 @@ func renderLogsTable(data []api.SpendLogEntry, total int) string {
 
 	// 打印数据
 	for _, entry := range data {
-		startTime := entry.StartTime
-		if len(startTime) >= 19 {
-			startTime = startTime[:16]
-			startTime = strings.Replace(startTime, "T", " ", 1)
-		}
+		startTime := formatLocalTime(entry.StartTime)
 
 		status := "✓"
 		if entry.Status != "success" && entry.ErrorMessage != "" {
