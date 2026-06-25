@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -129,9 +130,10 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 	if resp == nil || len(resp.Data) == 0 {
 		fmt.Println(contentStyle.Render("暂无数据"))
 	} else {
-		// 表头
-		fmt.Println(headerStyle.Render("时间                    状态    费用      耗时     Tokens     模型"))
-		fmt.Println(mutedStyle.Render(strings.Repeat("─", 90)))
+		// 表头 (固定宽度确保对齐)
+		fmt.Println(headerStyle.Render(fmt.Sprintf("%-22s %-6s %-8s %-7s %-8s %-30s %s",
+			"时间", "状态", "费用", "耗时", "Tokens", "模型", "Tags")))
+		fmt.Println(mutedStyle.Render(strings.Repeat("─", 100)))
 
 		// 显示日志条目
 		count := 0
@@ -148,6 +150,8 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 				startTime = startTime[:16] // 去掉秒和时区
 				startTime = strings.Replace(startTime, "T", " ", 1)
 			}
+			// 补齐时间到 16 字符确保对齐
+			startTime = fmt.Sprintf("%-16s", startTime)
 
 			// 状态
 			status := "✓"
@@ -160,52 +164,83 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 			if entry.TotalSpend > 0 {
 				spendStr = fmt.Sprintf("$%.2f", entry.TotalSpend)
 			}
+			spendStr = fmt.Sprintf("%-8s", spendStr)
 
-			// 耗时
+			// 耗时 (通过 startTime 和 endTime 计算)
 			latencyStr := "-"
-			if entry.Latency > 0 {
-				latencyStr = fmt.Sprintf("%.2fs", entry.Latency)
+			if entry.StartTime != "" && entry.EndTime != "" {
+				start, err := time.Parse(time.RFC3339, entry.StartTime)
+				if err == nil {
+					end, err := time.Parse(time.RFC3339, entry.EndTime)
+					if err == nil {
+						duration := end.Sub(start)
+						if duration > 0 {
+							latencyStr = fmt.Sprintf("%.2fs", duration.Seconds())
+						}
+					}
+				}
 			}
+			latencyStr = fmt.Sprintf("%-7s", latencyStr)
 
-			// Tokens
-			tokensStr := fmt.Sprintf("%d", entry.TotalTokens)
-			if entry.TotalTokens >= 1000000 {
-				tokensStr = fmt.Sprintf("%.1fM", float64(entry.TotalTokens)/1000000)
-			} else if entry.TotalTokens >= 1000 {
-				tokensStr = fmt.Sprintf("%.1fK", float64(entry.TotalTokens)/1000)
+			// Tokens 显示为 total(prompt+completion)
+			var tokensStr string
+			if entry.TotalTokens > 0 {
+				tokensStr = fmt.Sprintf("%d(%d+%d)", entry.TotalTokens, entry.PromptTokens, entry.CompletionTokens)
+			} else {
+				tokensStr = "-"
 			}
+			tokensStr = fmt.Sprintf("%-8s", tokensStr)
 
-			// 模型 (截断)
-			model := entry.Model
+			// 模型 (从 model_group 取值，截断显示)
+			model := entry.ModelGroup
+			if model == "" {
+				model = entry.Model
+			}
 			if len(model) > 30 {
 				model = model[:30]
 			}
+			model = fmt.Sprintf("%-30s", model)
 
-			// Tags (从 metadata 提取 user_api_key_alias)
+			// Tags (从 request_tags 读取，解析显示)
 			tag := ""
-			if entry.Metadata != nil {
-				if alias, ok := entry.Metadata["user_api_key_alias"].(string); ok {
-					tag = alias
+			if len(entry.RequestTags) > 0 {
+				tags := entry.RequestTags
+				if len(tags) > 1 {
+					// 按长度排序
+					sort.Slice(tags, func(i, j int) bool {
+						return len(tags[i]) < len(tags[j])
+					})
+					// 从最长的 tag 中提取: name/version 的格式
+					longest := tags[len(tags)-1]
+					// 去掉 "User-Agent: " 前缀
+					longest = strings.TrimPrefix(longest, "User-Agent: ")
+					// 去掉括号内容 like (external, cli)
+					if idx := strings.Index(longest, "("); idx != -1 {
+						longest = longest[:idx]
+					}
+					tag = strings.TrimSpace(longest)
+				} else {
+					tag = tags[0]
 				}
 			}
 
 			// 打印行
 			if entry.Status != "success" && entry.ErrorMessage != "" {
-				fmt.Printf("%s %s %s %s %s %s %s\n",
+				fmt.Printf("%-22s %-6s %-8s %-7s %-8s %-30s %s\n",
 					contentStyle.Render(startTime),
 					errorStyle.Render(status),
-					greenStyle.Render(fmt.Sprintf("%-8s", spendStr)),
-					yellowStyle.Render(fmt.Sprintf("%-7s", latencyStr)),
-					contentStyle.Render(fmt.Sprintf("%-8s", tokensStr)),
+					greenStyle.Render(spendStr),
+					yellowStyle.Render(latencyStr),
+					contentStyle.Render(tokensStr),
 					contentStyle.Render(model),
 					mutedStyle.Render(tag))
 			} else {
-				fmt.Printf("%s %s %s %s %s %s %s\n",
+				fmt.Printf("%-22s %-6s %-8s %-7s %-8s %-30s %s\n",
 					contentStyle.Render(startTime),
 					greenStyle.Render(status),
-					greenStyle.Render(fmt.Sprintf("%-8s", spendStr)),
-					yellowStyle.Render(fmt.Sprintf("%-7s", latencyStr)),
-					contentStyle.Render(fmt.Sprintf("%-8s", tokensStr)),
+					greenStyle.Render(spendStr),
+					yellowStyle.Render(latencyStr),
+					contentStyle.Render(tokensStr),
 					contentStyle.Render(model),
 					mutedStyle.Render(tag))
 			}

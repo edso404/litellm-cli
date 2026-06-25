@@ -182,6 +182,7 @@ type SpendLogEntry struct {
 	CallType         string                 `json:"call_type"`
 	APIKey           string                 `json:"api_key"`
 	Model            string                 `json:"model"`
+	ModelGroup       string                 `json:"model_group"`
 	Status           string                 `json:"status"`
 	StartTime        string                 `json:"startTime"`
 	EndTime          string                 `json:"endTime"`
