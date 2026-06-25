@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 	"github.com/spf13/cobra"
 	"litellm-cli/internal/api"
 	"litellm-cli/internal/client"
@@ -124,16 +125,31 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	yellowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
 
+	// 辅助函数：按显示宽度填充
+	padRight := func(s string, width int) string {
+		w := runewidth.StringWidth(s)
+		if w >= width {
+			return s
+		}
+		return s + strings.Repeat(" ", width-w)
+	}
+
 	fmt.Println(headerStyle.Render(fmt.Sprintf(" 📊 LiteLLM 实时日志 (刷新: %ds) | 按 q 退出 ", interval)))
 	fmt.Println()
 
 	if resp == nil || len(resp.Data) == 0 {
 		fmt.Println(contentStyle.Render("暂无数据"))
 	} else {
-		// 表头 (固定宽度确保对齐)
-		fmt.Println(headerStyle.Render(fmt.Sprintf("%-22s %-6s %-8s %-7s %-8s %-30s %s",
-			"时间", "状态", "费用", "耗时", "Tokens", "模型", "Tags")))
-		fmt.Println(mutedStyle.Render(strings.Repeat("─", 100)))
+		// 表头 (使用 runewidth 计算显示宽度)
+		fmt.Println(headerStyle.Render(fmt.Sprintf("%s %s %s %s %s %s %s",
+			padRight("时间", 16),
+			padRight("状态", 4),
+			padRight("费用", 7),
+			padRight("耗时", 6),
+			padRight("Tokens", 9),
+			padRight("模型", 24),
+			"Tags")))
+		fmt.Println(mutedStyle.Render(strings.Repeat("─", 90)))
 
 		// 显示日志条目
 		count := 0
@@ -150,8 +166,8 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 				startTime = startTime[:16] // 去掉秒和时区
 				startTime = strings.Replace(startTime, "T", " ", 1)
 			}
-			// 补齐时间到 16 字符确保对齐
-			startTime = fmt.Sprintf("%-16s", startTime)
+			// 补齐时间到显示宽度 16
+			startTime = padRight(startTime, 16)
 
 			// 状态
 			status := "✓"
@@ -164,7 +180,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 			if entry.TotalSpend > 0 {
 				spendStr = fmt.Sprintf("$%.2f", entry.TotalSpend)
 			}
-			spendStr = fmt.Sprintf("%-8s", spendStr)
+			spendStr = padRight(spendStr, 7)
 
 			// 耗时 (通过 startTime 和 endTime 计算)
 			latencyStr := "-"
@@ -180,7 +196,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 					}
 				}
 			}
-			latencyStr = fmt.Sprintf("%-7s", latencyStr)
+			latencyStr = padRight(latencyStr, 6)
 
 			// Tokens 显示为 total(prompt+completion)
 			var tokensStr string
@@ -189,17 +205,17 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 			} else {
 				tokensStr = "-"
 			}
-			tokensStr = fmt.Sprintf("%-8s", tokensStr)
+			tokensStr = padRight(tokensStr, 9)
 
 			// 模型 (从 model_group 取值，截断显示)
 			model := entry.ModelGroup
 			if model == "" {
 				model = entry.Model
 			}
-			if len(model) > 30 {
-				model = model[:30]
+			if len(model) > 24 {
+				model = model[:24]
 			}
-			model = fmt.Sprintf("%-30s", model)
+			model = padRight(model, 24)
 
 			// Tags (从 request_tags 读取，解析显示)
 			tag := ""
@@ -226,18 +242,18 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 
 			// 打印行
 			if entry.Status != "success" && entry.ErrorMessage != "" {
-				fmt.Printf("%-22s %-6s %-8s %-7s %-8s %-30s %s\n",
+				fmt.Printf("%s %s %s %s %s %s %s\n",
 					contentStyle.Render(startTime),
-					errorStyle.Render(status),
+					errorStyle.Render(padRight(status, 4)),
 					greenStyle.Render(spendStr),
 					yellowStyle.Render(latencyStr),
 					contentStyle.Render(tokensStr),
 					contentStyle.Render(model),
 					mutedStyle.Render(tag))
 			} else {
-				fmt.Printf("%-22s %-6s %-8s %-7s %-8s %-30s %s\n",
+				fmt.Printf("%s %s %s %s %s %s %s\n",
 					contentStyle.Render(startTime),
-					greenStyle.Render(status),
+					greenStyle.Render(padRight(status, 4)),
 					greenStyle.Render(spendStr),
 					yellowStyle.Render(latencyStr),
 					contentStyle.Render(tokensStr),

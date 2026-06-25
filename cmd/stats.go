@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattn/go-runewidth"
 	"github.com/spf13/cobra"
 	"litellm-cli/internal/client"
 	"litellm-cli/internal/config"
@@ -96,6 +97,15 @@ func printUserStats(c *client.Client, startDate, endDate string) {
 		totalRequests += r.Metrics.APIRequests
 	}
 
+	// 辅助函数：按显示宽度填充
+	padRight := func(s string, width int) string {
+		w := runewidth.StringWidth(s)
+		if w >= width {
+			return s
+		}
+		return s + strings.Repeat(" ", width-w)
+	}
+
 	// 显示汇总
 	fmt.Println("\n📈 汇总")
 	fmt.Printf("   💰 花费: $%.4f\n", totalSpend)
@@ -109,9 +119,15 @@ func printUserStats(c *client.Client, startDate, endDate string) {
 	// 显示最近几天的明细
 	if len(resp.Results) > 1 {
 		fmt.Println("\n📅 最近几天:")
-		fmt.Printf("   %-12s %-10s %-8s %-10s %-10s %-10s %-10s\n",
-			"日期", "Cost", "Requests", "Input", "Output", "Total", "成功率")
-		fmt.Println("   " + strings.Repeat("-", 75))
+		fmt.Printf("   %s %s %s %s %s %s %s\n",
+			padRight("日期", 10),
+			padRight("Cost", 8),
+			padRight("Requests", 8),
+			padRight("Input", 8),
+			padRight("Output", 8),
+			padRight("Total", 8),
+			padRight("成功率", 8))
+		fmt.Println("   " + strings.Repeat("-", 65))
 
 		days := min(7, len(resp.Results))
 		for i := 0; i < days; i++ {
@@ -120,13 +136,13 @@ func printUserStats(c *client.Client, startDate, endDate string) {
 			if r.Metrics.APIRequests > 0 {
 				successRate = float64(r.Metrics.SuccessfulRequests) / float64(r.Metrics.APIRequests) * 100
 			}
-			fmt.Printf("   %-12s $%-9.2f %-8d %-10s %-10s %-10s %-8.1f%%\n",
-				r.Date,
-				r.Metrics.Spend,
+			fmt.Printf("   %s %s %d %s %s %s %.1f%%\n",
+				padRight(r.Date, 10),
+				padRight(fmt.Sprintf("$%.2f", r.Metrics.Spend), 8),
 				r.Metrics.APIRequests,
-				formatTokens(r.Metrics.PromptTokens),
-				formatTokens(r.Metrics.CompletionTokens),
-				formatTokens(r.Metrics.TotalTokens),
+				padRight(formatTokens(r.Metrics.PromptTokens), 8),
+				padRight(formatTokens(r.Metrics.CompletionTokens), 8),
+				padRight(formatTokens(r.Metrics.TotalTokens), 8),
 				successRate,
 			)
 		}
