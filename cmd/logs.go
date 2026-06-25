@@ -140,16 +140,16 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 	if resp == nil || len(resp.Data) == 0 {
 		fmt.Println(contentStyle.Render("暂无数据"))
 	} else {
-		// 表头 (使用 runewidth 计算显示宽度)
+		// 表头 (使用 runewidth 计算显示宽度，列宽根据实际数据调整)
 		fmt.Println(headerStyle.Render(fmt.Sprintf("%s %s %s %s %s %s %s",
 			padRight("时间", 16),
-			padRight("状态", 4),
+			padRight("状态", 2),
 			padRight("费用", 7),
-			padRight("耗时", 6),
-			padRight("Tokens", 9),
-			padRight("模型", 24),
+			padRight("耗时", 8),
+			padRight("Tokens", 18),
+			padRight("模型", 26),
 			"Tags")))
-		fmt.Println(mutedStyle.Render(strings.Repeat("─", 90)))
+		fmt.Println(mutedStyle.Render(strings.Repeat("─", 95)))
 
 		// 显示日志条目
 		count := 0
@@ -196,7 +196,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 					}
 				}
 			}
-			latencyStr = padRight(latencyStr, 6)
+			latencyStr = padRight(latencyStr, 8)
 
 			// Tokens 显示为 total(prompt+completion)
 			var tokensStr string
@@ -205,17 +205,17 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 			} else {
 				tokensStr = "-"
 			}
-			tokensStr = padRight(tokensStr, 9)
+			tokensStr = padRight(tokensStr, 18)
 
 			// 模型 (从 model_group 取值，截断显示)
 			model := entry.ModelGroup
 			if model == "" {
 				model = entry.Model
 			}
-			if len(model) > 24 {
-				model = model[:24]
+			if len(model) > 26 {
+				model = model[:26]
 			}
-			model = padRight(model, 24)
+			model = padRight(model, 26)
 
 			// Tags (从 request_tags 读取，解析显示)
 			tag := ""
@@ -244,7 +244,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 			if entry.Status != "success" && entry.ErrorMessage != "" {
 				fmt.Printf("%s %s %s %s %s %s %s\n",
 					contentStyle.Render(startTime),
-					errorStyle.Render(padRight(status, 4)),
+					errorStyle.Render(padRight(status, 2)),
 					greenStyle.Render(spendStr),
 					yellowStyle.Render(latencyStr),
 					contentStyle.Render(tokensStr),
@@ -253,7 +253,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 			} else {
 				fmt.Printf("%s %s %s %s %s %s %s\n",
 					contentStyle.Render(startTime),
-					greenStyle.Render(padRight(status, 4)),
+					greenStyle.Render(padRight(status, 2)),
 					greenStyle.Render(spendStr),
 					yellowStyle.Render(latencyStr),
 					contentStyle.Render(tokensStr),
