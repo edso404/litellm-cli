@@ -475,7 +475,7 @@ func (m *statsModel) renderCounterView() string {
 	}
 
 	// 卡片宽度
-	cardWidth := 18
+	cardWidth := 20
 
 	// 按行渲染
 	for row := 0; row < len(metrics); row += cols {
