@@ -140,49 +140,58 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 	if resp == nil || len(resp.Data) == 0 {
 		fmt.Println(contentStyle.Render("暂无数据"))
 	} else {
-		// 表头 (使用 runewidth 计算显示宽度，列宽根据实际数据调整)
-		fmt.Println(headerStyle.Render(fmt.Sprintf("%s %s %s %s %s %s %s",
-			padRight("时间", 16),
-			padRight("状态", 2),
-			padRight("费用", 7),
-			padRight("耗时", 8),
-			padRight("Tokens", 18),
-			padRight("模型", 26),
-			"Tags")))
-		fmt.Println(mutedStyle.Render(strings.Repeat("─", 95)))
-
-		// 显示日志条目
-		count := 0
+		// 先过滤数据
+		var filteredData []api.SpendLogEntry
 		for _, entry := range resp.Data {
-			// 过滤模型
 			if modelFilter != "" && !strings.Contains(entry.Model, modelFilter) {
 				continue
 			}
-			count++
+			filteredData = append(filteredData, entry)
+		}
 
-			// 时间 (只显示日期和时间)
+		// 自动计算每列的最大宽度
+		colWidths := struct {
+			time   int
+			status int
+			spend  int
+			latency int
+			tokens  int
+			model   int
+			tags    int
+		}{
+			time:   runewidth.StringWidth("时间"),
+			status: runewidth.StringWidth("状态"),
+			spend:  runewidth.StringWidth("费用"),
+			latency: runewidth.StringWidth("耗时"),
+			tokens: runewidth.StringWidth("Tokens"),
+			model:  runewidth.StringWidth("模型"),
+			tags:   runewidth.StringWidth("Tags"),
+		}
+
+		for _, entry := range filteredData {
+			// 时间
 			startTime := entry.StartTime
 			if len(startTime) >= 19 {
-				startTime = startTime[:16] // 去掉秒和时区
+				startTime = startTime[:16]
 				startTime = strings.Replace(startTime, "T", " ", 1)
 			}
-			// 补齐时间到显示宽度 16
-			startTime = padRight(startTime, 16)
+			colWidths.time = max(colWidths.time, runewidth.StringWidth(startTime))
 
 			// 状态
 			status := "✓"
 			if entry.Status != "success" && entry.ErrorMessage != "" {
 				status = "✗"
 			}
+			colWidths.status = max(colWidths.status, runewidth.StringWidth(status))
 
 			// 费用
 			spendStr := "-"
 			if entry.TotalSpend > 0 {
 				spendStr = fmt.Sprintf("$%.2f", entry.TotalSpend)
 			}
-			spendStr = padRight(spendStr, 7)
+			colWidths.spend = max(colWidths.spend, runewidth.StringWidth(spendStr))
 
-			// 耗时 (通过 startTime 和 endTime 计算)
+			// 耗时
 			latencyStr := "-"
 			if entry.StartTime != "" && entry.EndTime != "" {
 				start, err := time.Parse(time.RFC3339, entry.StartTime)
@@ -196,41 +205,123 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 					}
 				}
 			}
-			latencyStr = padRight(latencyStr, 8)
+			colWidths.latency = max(colWidths.latency, runewidth.StringWidth(latencyStr))
 
-			// Tokens 显示为 total(prompt+completion)
+			// Tokens
+			tokensStr := "-"
+			if entry.TotalTokens > 0 {
+				tokensStr = fmt.Sprintf("%d(%d+%d)", entry.TotalTokens, entry.PromptTokens, entry.CompletionTokens)
+			}
+			colWidths.tokens = max(colWidths.tokens, runewidth.StringWidth(tokensStr))
+
+			// 模型
+			model := entry.ModelGroup
+			if model == "" {
+				model = entry.Model
+			}
+			colWidths.model = max(colWidths.model, runewidth.StringWidth(model))
+
+			// Tags
+			tag := ""
+			if len(entry.RequestTags) > 0 {
+				tags := entry.RequestTags
+				if len(tags) > 1 {
+					sort.Slice(tags, func(i, j int) bool {
+						return len(tags[i]) < len(tags[j])
+					})
+					longest := tags[len(tags)-1]
+					longest = strings.TrimPrefix(longest, "User-Agent: ")
+					if idx := strings.Index(longest, "("); idx != -1 {
+						longest = longest[:idx]
+					}
+					tag = strings.TrimSpace(longest)
+				} else {
+					tag = tags[0]
+				}
+			}
+			colWidths.tags = max(colWidths.tags, runewidth.StringWidth(tag))
+		}
+
+		// 打印表头
+		fmt.Println(headerStyle.Render(fmt.Sprintf("%s %s %s %s %s %s %s",
+			padRight("时间", colWidths.time),
+			padRight("状态", colWidths.status),
+			padRight("费用", colWidths.spend),
+			padRight("耗时", colWidths.latency),
+			padRight("Tokens", colWidths.tokens),
+			padRight("模型", colWidths.model),
+			padRight("Tags", colWidths.tags))))
+
+		// 打印分隔线
+		totalWidth := colWidths.time + colWidths.status + colWidths.spend + colWidths.latency + colWidths.tokens + colWidths.model + colWidths.tags + 6
+		fmt.Println(mutedStyle.Render(strings.Repeat("─", totalWidth)))
+
+		// 打印数据
+		for _, entry := range filteredData {
+			// 时间
+			startTime := entry.StartTime
+			if len(startTime) >= 19 {
+				startTime = startTime[:16]
+				startTime = strings.Replace(startTime, "T", " ", 1)
+			}
+			startTime = padRight(startTime, colWidths.time)
+
+			// 状态
+			status := "✓"
+			if entry.Status != "success" && entry.ErrorMessage != "" {
+				status = "✗"
+			}
+			status = padRight(status, colWidths.status)
+
+			// 费用
+			spendStr := "-"
+			if entry.TotalSpend > 0 {
+				spendStr = fmt.Sprintf("$%.2f", entry.TotalSpend)
+			}
+			spendStr = padRight(spendStr, colWidths.spend)
+
+			// 耗时
+			latencyStr := "-"
+			if entry.StartTime != "" && entry.EndTime != "" {
+				start, err := time.Parse(time.RFC3339, entry.StartTime)
+				if err == nil {
+					end, err := time.Parse(time.RFC3339, entry.EndTime)
+					if err == nil {
+						duration := end.Sub(start)
+						if duration > 0 {
+							latencyStr = fmt.Sprintf("%.2fs", duration.Seconds())
+						}
+					}
+				}
+			}
+			latencyStr = padRight(latencyStr, colWidths.latency)
+
+			// Tokens
 			var tokensStr string
 			if entry.TotalTokens > 0 {
 				tokensStr = fmt.Sprintf("%d(%d+%d)", entry.TotalTokens, entry.PromptTokens, entry.CompletionTokens)
 			} else {
 				tokensStr = "-"
 			}
-			tokensStr = padRight(tokensStr, 18)
+			tokensStr = padRight(tokensStr, colWidths.tokens)
 
-			// 模型 (从 model_group 取值，截断显示)
+			// 模型
 			model := entry.ModelGroup
 			if model == "" {
 				model = entry.Model
 			}
-			if len(model) > 26 {
-				model = model[:26]
-			}
-			model = padRight(model, 26)
+			model = padRight(model, colWidths.model)
 
-			// Tags (从 request_tags 读取，解析显示)
+			// Tags
 			tag := ""
 			if len(entry.RequestTags) > 0 {
 				tags := entry.RequestTags
 				if len(tags) > 1 {
-					// 按长度排序
 					sort.Slice(tags, func(i, j int) bool {
 						return len(tags[i]) < len(tags[j])
 					})
-					// 从最长的 tag 中提取: name/version 的格式
 					longest := tags[len(tags)-1]
-					// 去掉 "User-Agent: " 前缀
 					longest = strings.TrimPrefix(longest, "User-Agent: ")
-					// 去掉括号内容 like (external, cli)
 					if idx := strings.Index(longest, "("); idx != -1 {
 						longest = longest[:idx]
 					}
@@ -244,7 +335,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 			if entry.Status != "success" && entry.ErrorMessage != "" {
 				fmt.Printf("%s %s %s %s %s %s %s\n",
 					contentStyle.Render(startTime),
-					errorStyle.Render(padRight(status, 2)),
+					errorStyle.Render(status),
 					greenStyle.Render(spendStr),
 					yellowStyle.Render(latencyStr),
 					contentStyle.Render(tokensStr),
@@ -253,7 +344,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 			} else {
 				fmt.Printf("%s %s %s %s %s %s %s\n",
 					contentStyle.Render(startTime),
-					greenStyle.Render(padRight(status, 2)),
+					greenStyle.Render(status),
 					greenStyle.Render(spendStr),
 					yellowStyle.Render(latencyStr),
 					contentStyle.Render(tokensStr),
@@ -263,7 +354,7 @@ func printSpendLogsUI(resp *api.SpendLogsUIResponse, tick int, modelFilter strin
 		}
 
 		fmt.Println()
-		fmt.Println(mutedStyle.Render(fmt.Sprintf("共 %d 条记录 (总 %d)", count, resp.Total)))
+		fmt.Println(mutedStyle.Render(fmt.Sprintf("共 %d 条记录 (总 %d)", len(filteredData), resp.Total)))
 	}
 
 	fmt.Println()
