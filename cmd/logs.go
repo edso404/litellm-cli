@@ -438,7 +438,7 @@ func printSpendLogs(resp *api.SpendLogsResponse, tick int, modelFilter string) {
 }
 
 // renderLogsTable 渲染日志表格 (用于 TUI 模式)
-func renderLogsTable(data []api.SpendLogEntry, total int, newLogIDs map[string]bool) string {
+func renderLogsTable(data []api.SpendLogEntry, total int, newLogIDs map[string]bool, maxRows int) string {
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
 	contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -554,7 +554,15 @@ func renderLogsTable(data []api.SpendLogEntry, total int, newLogIDs map[string]b
 	sb.WriteString(mutedStyle.Render(strings.Repeat("─", totalWidth)) + "\n")
 
 	// 打印数据
+	rowCount := 0
 	for _, entry := range data {
+		// 限制显示行数，预留2行给表头和分隔线
+		if maxRows > 0 && rowCount >= maxRows-2 {
+			sb.WriteString(mutedStyle.Render(fmt.Sprintf("\n... 还有 %d 条记录 (总 %d)", len(data)-rowCount, total)))
+			break
+		}
+		rowCount++
+
 		startTime := formatLocalTime(entry.StartTime)
 
 		// 判断是否是新记录
@@ -652,7 +660,7 @@ func renderLogsTable(data []api.SpendLogEntry, total int, newLogIDs map[string]b
 }
 
 // renderLogsTableOld 渲染旧版日志表格 (用于 TUI 模式回退)
-func renderLogsTableOld(resp *api.SpendLogsResponse, intervalVal int, newLogIDs map[string]bool) string {
+func renderLogsTableOld(resp *api.SpendLogsResponse, intervalVal int, newLogIDs map[string]bool, maxRows int) string {
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
 	contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -661,7 +669,14 @@ func renderLogsTableOld(resp *api.SpendLogsResponse, intervalVal int, newLogIDs 
 	var sb strings.Builder
 	sb.WriteString(headerStyle.Render(fmt.Sprintf(" 📊 LiteLLM 日志 (刷新: %ds) | Ctrl+C 退出 ", intervalVal)) + "\n\n")
 
+	rowCount := 0
 	for _, entry := range *resp {
+		// 限制显示行数
+		if maxRows > 0 && rowCount >= maxRows {
+			sb.WriteString(mutedStyle.Render(fmt.Sprintf("\n... 还有 %d 条记录", len(*resp)-rowCount)))
+			break
+		}
+
 		spendVal, hasSpend := entry["spend"]
 		if hasSpend {
 			spend, _ := spendVal.(float64)
@@ -684,6 +699,7 @@ func renderLogsTableOld(resp *api.SpendLogsResponse, intervalVal int, newLogIDs 
 				sb.WriteString(greenStyle.Render(fmt.Sprintf("$%.4f ", spend)))
 			}
 			sb.WriteString("\n")
+			rowCount++
 		}
 	}
 
@@ -704,6 +720,8 @@ type logsModel struct {
 	seenLogIDs  map[string]bool // 已看到的日志ID
 	newLogIDs   map[string]bool // 本次新增的日志ID（用于高亮）
 	initialized bool            // 是否已完成首次加载
+	width      int             // 窗口宽度
+	height     int             // 窗口高度
 }
 
 func NewLogsModel(c *client.Client, interval int, model string) *logsModel {
@@ -733,6 +751,9 @@ func (m *logsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		}
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 	case tickMsg:
 		m.refresh()
 		m.tick++
@@ -756,6 +777,12 @@ func (m *logsModel) View() string {
 	// 直接渲染完整的日志表格
 	var content strings.Builder
 
+	// 计算可用的行数 (预留表头3行 + 底部状态栏2行)
+	availableRows := 50
+	if m.height > 10 {
+		availableRows = m.height - 10
+	}
+
 	if m.logData != nil && len(m.logData.Data) > 0 {
 		// 过滤数据
 		filteredData := m.logData.Data
@@ -768,9 +795,9 @@ func (m *logsModel) View() string {
 			}
 			filteredData = filtered
 		}
-		content.WriteString(renderLogsTable(filteredData, int(m.logData.Total), m.newLogIDs))
+		content.WriteString(renderLogsTable(filteredData, int(m.logData.Total), m.newLogIDs, availableRows))
 	} else if m.logDataOld != nil && len(*m.logDataOld) > 0 {
-		content.WriteString(renderLogsTableOld(m.logDataOld, m.interval, m.newLogIDs))
+		content.WriteString(renderLogsTableOld(m.logDataOld, m.interval, m.newLogIDs, availableRows))
 	} else {
 		content.WriteString("暂无数据")
 	}
