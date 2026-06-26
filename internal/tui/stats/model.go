@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"litellm-cli/internal/api"
+	"litellm-cli/internal/tui/components"
 )
 
 // StatsClient defines the client interface required by the stats TUI
@@ -139,27 +140,22 @@ func (m *Model) View() string {
 		return "👋 已退出\n"
 	}
 	if m.err != "" {
-		return m.err + "\n"
+		return components.NewErrorBanner(m.err).View(m.width) + "\n"
 	}
 	if m.loading {
-		return "⏳ 正在加载统计数据...\n"
+		return components.NewLoader("正在加载统计数据...").View() + "\n"
 	}
 	if len(m.data) == 0 {
-		return "暂无数据\n"
+		return components.NewPlaceholder("暂无数据").View() + "\n"
 	}
 
 	isLargeScreen := m.width >= 115
 
 	var sb strings.Builder
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("236"))
-	helpStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
 
 	if isLargeScreen {
-		sb.WriteString(headerStyle.Render(fmt.Sprintf(" 📊 用量统计看板 (%s - %s) | 按 q 退出 ", m.startDate, m.endDate)))
+		header := components.NewHeader("用量统计看板", fmt.Sprintf("%s - %s | 按 q 退出", m.startDate, m.endDate))
+		sb.WriteString(header.View(m.width))
 		sb.WriteString("\n\n")
 
 		leftWidth := 55
@@ -175,20 +171,38 @@ func (m *Model) View() string {
 		)
 		sb.WriteString(joined)
 		sb.WriteString("\n\n")
-		sb.WriteString(helpStyle.Render("  j/k 或 ↓/↑: 在右侧图表中移动  |  q: 退出"))
+
+		help := components.NewHelp([]components.HelpKey{
+			{Key: "j/k 或 ↓/↑", Desc: "在右侧图表中移动"},
+			{Key: "q", Desc: "退出"},
+		})
+		sb.WriteString(help.View(m.width))
 	} else {
 		if m.viewMode == "bar" {
-			sb.WriteString(headerStyle.Render(fmt.Sprintf(" 📊 每日花费 (%s - %s) | 按 Tab 切换视图 | 按 q 退出 ", m.startDate, m.endDate)))
+			header := components.NewHeader("每日花费", fmt.Sprintf("%s - %s | 按 Tab 切换视图 | 按 q 退出", m.startDate, m.endDate))
+			sb.WriteString(header.View(m.width))
 			sb.WriteString("\n\n")
 			sb.WriteString(m.renderBarContent(m.width))
 			sb.WriteString("\n\n")
-			sb.WriteString(helpStyle.Render("  Tab: 切换视图  |  j/k 或 ↓/↑: 移动  |  q: 退出"))
+
+			help := components.NewHelp([]components.HelpKey{
+				{Key: "Tab", Desc: "切换视图"},
+				{Key: "j/k 或 ↓/↑", Desc: "移动"},
+				{Key: "q", Desc: "退出"},
+			})
+			sb.WriteString(help.View(m.width))
 		} else {
-			sb.WriteString(headerStyle.Render(fmt.Sprintf(" 📊 用量统计 (%s - %s) | 按 Tab 切换视图 | 按 q 退出 ", m.startDate, m.endDate)))
+			header := components.NewHeader("用量统计", fmt.Sprintf("%s - %s | 按 Tab 切换视图 | 按 q 退出", m.startDate, m.endDate))
+			sb.WriteString(header.View(m.width))
 			sb.WriteString("\n\n")
 			sb.WriteString(m.renderCounterContent(m.width))
 			sb.WriteString("\n\n")
-			sb.WriteString(helpStyle.Render("  Tab: 切换视图  |  q: 退出"))
+
+			help := components.NewHelp([]components.HelpKey{
+				{Key: "Tab", Desc: "切换视图"},
+				{Key: "q", Desc: "退出"},
+			})
+			sb.WriteString(help.View(m.width))
 		}
 	}
 

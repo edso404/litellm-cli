@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 	"litellm-cli/internal/api"
+	"litellm-cli/internal/tui/components"
 )
 
 // detailTabs 定义详情视图的 tab 页面
@@ -413,11 +414,6 @@ type detailViewState struct {
 }
 
 func (m *Model) renderDetailView() string {
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("236"))
-
 	contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).MarginRight(1)
@@ -460,17 +456,18 @@ func (m *Model) renderDetailView() string {
 	var lines []string
 
 	// 渲染头部
+	var header *components.Header
 	if m.detailState.activeTab == "main" {
-		lines = append(lines, headerStyle.Render(" 📋 日志详情 | ESC 返回 | ↑↓ 切换 | Tab 切换 | Enter 进入 "))
+		header = components.NewHeader("日志详情", "ESC 返回 | ↑↓ 切换 | Tab 切换 | Enter 进入")
 	} else if m.detailState.activeTab == "system" {
 		if m.detailState.itemDetailMode {
-			modeHint := "📄 Raw"
+			modeHint := "Raw"
 			if m.detailState.markdownViewMode == "rendered" {
-				modeHint = "🎨 Rendered"
+				modeHint = "Rendered"
 			}
-			lines = append(lines, headerStyle.Render(fmt.Sprintf(" 📋 日志详情 > System[%d] [%s] | ESC 返回列表 | ↑↓ 滚动 | 空格 切换 ", m.detailState.currentItemIndex, modeHint)))
+			header = components.NewHeader(fmt.Sprintf("日志详情 > System[%d] (%s)", m.detailState.currentItemIndex, modeHint), "ESC 返回列表 | ↑↓ 滚动 | 空格 切换")
 		} else {
-			lines = append(lines, headerStyle.Render(" 📋 日志详情 > System | ESC 返回 | ↑↓ 切换 | Enter 查看详情 "))
+			header = components.NewHeader("日志详情 > System", "ESC 返回 | ↑↓ 切换 | Enter 查看详情")
 		}
 	} else {
 		tabTitle := map[string]string{
@@ -479,21 +476,23 @@ func (m *Model) renderDetailView() string {
 			"messages": "Messages",
 			"choices":  "Choices",
 		}[m.detailState.activeTab]
-		lines = append(lines, headerStyle.Render(fmt.Sprintf(" 📋 日志详情 > %s | ESC 返回 | ↑↓ 选择 | Enter 展开 ", tabTitle)))
+		header = components.NewHeader(fmt.Sprintf("日志详情 > %s", tabTitle), "ESC 返回 | ↑↓ 选择 | Enter 展开")
 	}
+	lines = append(lines, header.View(m.width))
 	lines = append(lines, "")
 
-	// 加载状态
+	// 加载与错误状态
 	if m.detailError != "" {
-		lines = append(lines, contentStyle.Render(m.detailError))
 		if m.detailError == "加载中..." {
-			lines = append(lines, mutedStyle.Render(" ⏳"))
+			lines = append(lines, components.NewLoader("正在加载详情...").View())
+		} else {
+			lines = append(lines, components.NewErrorBanner(m.detailError).View(m.width))
 		}
 		return strings.Join(lines, "\n")
 	}
 
 	if m.detailData == nil {
-		lines = append(lines, mutedStyle.Render("无详情数据，请按 Enter 刷新"))
+		lines = append(lines, components.NewPlaceholder("无详情数据，请按 Enter 刷新").View())
 		return strings.Join(lines, "\n")
 	}
 
@@ -506,15 +505,30 @@ func (m *Model) renderDetailView() string {
 
 	// 底部提示
 	lines = append(lines, "")
+	var help *components.Help
 	if m.detailState.activeTab == "system" {
 		if m.detailState.itemDetailMode {
-			lines = append(lines, mutedStyle.Render("提示: ↑↓ 滚动 | 空格 切换 Raw/Rendered | ESC 返回列表"))
+			help = components.NewHelp([]components.HelpKey{
+				{Key: "↑↓", Desc: "滚动"},
+				{Key: "空格", Desc: "切换 Raw/Rendered"},
+				{Key: "ESC", Desc: "返回列表"},
+			})
 		} else {
-			lines = append(lines, mutedStyle.Render("提示: ↑↓ 切换 | Enter 查看详情 | ESC 返回"))
+			help = components.NewHelp([]components.HelpKey{
+				{Key: "↑↓", Desc: "切换"},
+				{Key: "Enter", Desc: "查看详情"},
+				{Key: "ESC", Desc: "返回"},
+			})
 		}
 	} else {
-		lines = append(lines, mutedStyle.Render("提示: ↑↓ 切换 | Tab 切换 | Enter 进入 | ESC 返回"))
+		help = components.NewHelp([]components.HelpKey{
+			{Key: "↑↓", Desc: "切换"},
+			{Key: "Tab", Desc: "切换"},
+			{Key: "Enter", Desc: "进入"},
+			{Key: "ESC", Desc: "返回"},
+		})
 	}
+	lines = append(lines, help.View(m.width))
 
 	// System 详情模式：统一滚动处理
 	if m.detailState.activeTab == "system" && m.detailState.itemDetailMode {
@@ -1831,11 +1845,6 @@ func (m *Model) renderMetadataContent() string {
 }
 
 func (m *Model) renderListView() string {
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("236"))
-
 	var content strings.Builder
 
 	availableRows := 50
@@ -1858,10 +1867,12 @@ func (m *Model) renderListView() string {
 	} else if m.logDataOld != nil && len(*m.logDataOld) > 0 {
 		content.WriteString(renderLogsTableOld(m.logDataOld, m.interval, m.newLogIDs, availableRows, m.selectedIndex))
 	} else {
-		content.WriteString("暂无数据")
+		content.WriteString(components.NewPlaceholder("暂无数据").View())
 	}
 
-	return headerStyle.Render(fmt.Sprintf(" 📊 LiteLLM 日志 (刷新: %ds) | ↑↓ 选择 | Enter 查看详情 | q 退出 ", m.interval)) +
+	header := components.NewHeader("LiteLLM 日志", fmt.Sprintf("刷新: %ds | ↑↓ 选择 | Enter 详情 | q 退出", m.interval))
+
+	return header.View(m.width) +
 		"\n\n" +
 		content.String() +
 		fmt.Sprintf("\n\n⏱ 更新次数: %d | 时间: %s", m.tick, time.Now().Format("15:04:05"))
