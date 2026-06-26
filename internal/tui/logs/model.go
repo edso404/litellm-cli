@@ -532,9 +532,6 @@ func (m *Model) renderDetailView() string {
 
 	// System 详情模式：统一滚动处理
 	if m.detailState.activeTab == "system" && m.detailState.itemDetailMode {
-		log.Printf("[DEBUG] renderDetailView: lines count=%d, height=%d", len(lines), m.height)
-		log.Printf("[DEBUG] markdownScrollOffset=%d", m.detailState.markdownScrollOffset)
-
 		// 计算可见区域：总高度 - 头部(1行) - 空行 - 底部提示(2行)
 		availableLines := m.height - 4
 		return m.applyMarkdownScrollUnified(lines, availableLines)
@@ -578,19 +575,26 @@ func (m *Model) renderDetailView() string {
 }
 
 func (m *Model) applyMarkdownScrollUnified(allLines []string, availableLines int) string {
+	// 先对 allLines 进行全量按 \n 展开，确保行切片的物理精确性
+	var flatLines []string
+	for _, line := range allLines {
+		if strings.Contains(line, "\n") {
+			flatLines = append(flatLines, strings.Split(line, "\n")...)
+		} else {
+			flatLines = append(flatLines, line)
+		}
+	}
+	allLines = flatLines
+
 	if len(allLines) <= 4 {
 		return strings.Join(allLines, "\n")
 	}
-
-	log.Printf("[DEBUG] applyMarkdownScrollUnified: allLines count=%d, availableLines=%d", len(allLines), availableLines)
 
 	contentStart := 2
 	contentEnd := len(allLines) - 2 // exclude tip footer and scroll indicator
 
 	contentLines := allLines[contentStart:contentEnd]
 	contentLineCount := len(contentLines)
-
-	log.Printf("[DEBUG] contentStart=%d, contentEnd=%d, contentLineCount=%d", contentStart, contentEnd, contentLineCount)
 
 	if contentLineCount == 0 {
 		return strings.Join(allLines, "\n")
@@ -614,8 +618,6 @@ func (m *Model) applyMarkdownScrollUnified(allLines []string, availableLines int
 	if contentEndIdx > contentLineCount {
 		contentEndIdx = contentLineCount
 	}
-
-	log.Printf("[DEBUG] scrollOffset=%d, contentAvailable=%d, contentEndIdx=%d", scrollOffset, contentAvailable, contentEndIdx)
 
 	m.detailState.markdownScrollOffset = scrollOffset
 
@@ -1150,15 +1152,16 @@ func (m *Model) renderSystemItem(sys interface{}, idx int, contentStyle, mutedSt
 	lines = append(lines, groupStyle.Render(fmt.Sprintf("  [%d] system (%s)", idx, sysType)))
 
 	if text, ok := sysMap["text"].(string); ok && text != "" {
-		log.Printf("[DEBUG] renderSystemItem: text length=%d, itemDetailMode=%v, markdownViewMode=%s",
-			len(text), m.detailState.itemDetailMode, m.detailState.markdownViewMode)
 		if m.detailState != nil && m.detailState.activeTab == "system" && m.detailState.itemDetailMode {
 			if m.detailState.markdownViewMode == "rendered" {
 				rendered := m.renderMarkdownFull(text)
-				log.Printf("[DEBUG] renderSystemItem: rendered %d lines", len(rendered))
 				lines = append(lines, rendered...)
 			} else {
-				lines = append(lines, contentStyle.Render(text))
+				// raw 模式：为了保持按行物理滚动的确定性，将 text 按 \n 拆分并逐行加入 lines
+				rawLines := strings.Split(text, "\n")
+				for _, rl := range rawLines {
+					lines = append(lines, contentStyle.Render(rl))
+				}
 			}
 		} else {
 			lines = append(lines, contentStyle.Render(truncate(text, 500)))
