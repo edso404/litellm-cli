@@ -853,7 +853,21 @@ func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mute
 		thinking, cleanText := extractThinking(content)
 
 		if thinking != "" {
-			lines = append(lines, mutedStyle.Render("  🧠 思考过程: [已折叠] (按 Enter/Tab 切换 choices 查看完整思维链)"))
+			thinking = strings.TrimSpace(thinking)
+			renderedThinking := m.renderMarkdownFull(thinking)
+			maxThinkingLines := 4 // 默认展示最多4行思考过程，充分利用空闲高度并支持按长度展示
+			
+			lines = append(lines, mutedStyle.Render("  🧠 思考过程:"))
+			if len(renderedThinking) <= maxThinkingLines {
+				for _, rl := range renderedThinking {
+					lines = append(lines, "    "+rl)
+				}
+			} else {
+				for i := 0; i < maxThinkingLines; i++ {
+					lines = append(lines, "    "+renderedThinking[i])
+				}
+				lines = append(lines, mutedStyle.Render("    ... [思考过程较长已折叠，按 Enter/Tab 切换 choices 查看完整思维链] ..."))
+			}
 		}
 
 		if cleanText != "" {
@@ -918,6 +932,44 @@ func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mute
 		}
 	}
 
+	return lines
+}
+
+func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedStyle lipgloss.Style) []string {
+	var lines []string
+	if proxyReq == nil {
+		return lines
+	}
+	messages, ok := proxyReq["messages"].([]interface{})
+	if !ok || len(messages) == 0 {
+		return lines
+	}
+	lastMsg, _ := messages[len(messages)-1].(map[string]interface{})
+	if lastMsg == nil {
+		return lines
+	}
+	role, _ := lastMsg["role"].(string)
+	content := extractMessageContentFull(lastMsg)
+	if content == "" {
+		return lines
+	}
+
+	content = strings.TrimSpace(content)
+	rendered := m.renderMarkdownFull(content)
+	lines = append(lines, "")
+	lines = append(lines, mutedStyle.Render(fmt.Sprintf("  💬 最后消息 (%s):", role)))
+	
+	maxMsgLines := 3 // 限制最多展示3行，超出省略，防止内容过长撑破主视图卡片
+	if len(rendered) <= maxMsgLines {
+		for _, rl := range rendered {
+			lines = append(lines, "    "+rl)
+		}
+	} else {
+		for i := 0; i < maxMsgLines; i++ {
+			lines = append(lines, "    "+rendered[i])
+		}
+		lines = append(lines, mutedStyle.Render("    ... [长消息已折叠，按 Enter/Tab 切换 messages 查看完整对话] ..."))
+	}
 	return lines
 }
 
@@ -988,6 +1040,8 @@ func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardSt
 				leftCol = append(leftCol, mutedStyle.Render(fmt.Sprintf("  %s %s [无]", opt.icon, opt.label)))
 			}
 		}
+
+		leftCol = append(leftCol, m.renderLastMessagePreview(proxyReq, mutedStyle)...)
 
 		var metaInfo []string
 		if proxyReq != nil {
@@ -1103,6 +1157,8 @@ func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardSt
 				requestLines = append(requestLines, mutedStyle.Render(fmt.Sprintf("  %s %s [无]", opt.icon, opt.label)))
 			}
 		}
+
+		requestLines = append(requestLines, m.renderLastMessagePreview(proxyReq, mutedStyle)...)
 
 		var metaInfo []string
 		if proxyReq != nil {
