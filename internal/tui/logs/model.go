@@ -202,7 +202,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if maxItems > 0 {
 						m.detailState.selectedItem = (m.detailState.selectedItem - 1 + maxItems) % maxItems
 					}
-					m.detailState.scrollOffset = 0
 				}
 			} else if m.viewMode == "list" {
 				if m.selectedIndex > 0 {
@@ -217,7 +216,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.detailState.selectedItem = (m.detailState.selectedItem - 1 + maxItems) % maxItems
 					}
 				}
-				m.detailState.scrollOffset = 0
 			}
 			return m, nil
 		case "down", "j", "ctrl+n":
@@ -229,7 +227,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if maxItems > 0 {
 						m.detailState.selectedItem = (m.detailState.selectedItem + 1) % maxItems
 					}
-					m.detailState.scrollOffset = 0
 				}
 			} else if m.viewMode == "list" {
 				maxIdx := -1
@@ -250,7 +247,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.detailState.selectedItem = (m.detailState.selectedItem + 1) % maxItems
 					}
 				}
-				m.detailState.scrollOffset = 0
 			}
 			return m, nil
 		case "pgup", "\x1b[5~":
@@ -411,6 +407,8 @@ type detailViewState struct {
 	markdownScrollOffset int                 // markdown 渲染滚动偏移量
 	itemDetailMode       bool                // 是否处于查看某项详情的模式
 	currentItemIndex     int                 // 当前查看详情的项索引
+	selectedStartLine    int                 // 选中项在 lines 中的起始行
+	selectedEndLine      int                 // 选中项在 lines 中的结束行
 }
 
 func (m *Model) renderDetailView() string {
@@ -446,7 +444,13 @@ func (m *Model) renderDetailView() string {
 			markdownScrollOffset: 0,
 			itemDetailMode:       false,
 			currentItemIndex:     0,
+			selectedStartLine:    -1,
+			selectedEndLine:      -1,
 		}
+	} else {
+		// 每次渲染前，先重置选中项的物理行范围
+		m.detailState.selectedStartLine = -1
+		m.detailState.selectedEndLine = -1
 	}
 
 	// 获取数据
@@ -536,7 +540,7 @@ func (m *Model) renderDetailView() string {
 		availableLines := m.height - 4
 		return m.applyMarkdownScrollUnified(lines, availableLines)
 	} else {
-		// 普通模式：使用通用滚动
+		// 普通模式：使用智能焦点追踪滚动
 		scrollOffset := m.detailState.scrollOffset
 		maxDisplayLines := m.height - 3
 		if maxDisplayLines < 10 {
@@ -544,16 +548,36 @@ func (m *Model) renderDetailView() string {
 		}
 
 		totalLines := len(lines)
-		if scrollOffset > totalLines-maxDisplayLines {
-			scrollOffset = max(0, totalLines-maxDisplayLines)
-			m.detailState.scrollOffset = scrollOffset
+
+		// 根据选中项在屏幕中的物理行坐标，自适应平滑滚动
+		startLine := m.detailState.selectedStartLine
+		endLine := m.detailState.selectedEndLine
+
+		if startLine >= 0 && endLine >= 0 {
+			// 如果当前项的结束行超出了可视范围，向下滚动以完全包含它
+			if endLine > scrollOffset+maxDisplayLines {
+				scrollOffset = endLine - maxDisplayLines
+			}
+			// 如果当前项的起始行在可视范围上方，向上滚动以完全包含它
+			if startLine < scrollOffset {
+				scrollOffset = startLine
+			}
 		}
 
-		endLine := scrollOffset + maxDisplayLines
-		if endLine > totalLines {
-			endLine = totalLines
+		// 边界纠正
+		if scrollOffset > totalLines-maxDisplayLines {
+			scrollOffset = max(0, totalLines-maxDisplayLines)
 		}
-		visibleLines := lines[scrollOffset:endLine]
+		if scrollOffset < 0 {
+			scrollOffset = 0
+		}
+		m.detailState.scrollOffset = scrollOffset
+
+		endLineIdx := scrollOffset + maxDisplayLines
+		if endLineIdx > totalLines {
+			endLineIdx = totalLines
+		}
+		visibleLines := lines[scrollOffset:endLineIdx]
 
 		// 构建最终输出
 		var sb strings.Builder
@@ -565,7 +589,7 @@ func (m *Model) renderDetailView() string {
 		}
 
 		// 添加滚动指示器
-		if scrollOffset > 0 || endLine < totalLines {
+		if scrollOffset > 0 || endLineIdx < totalLines {
 			sb.WriteString("\n")
 			sb.WriteString(mutedStyle.Render(fmt.Sprintf(" ──◀ %d/%d ▶─ ", scrollOffset+1, totalLines)))
 		}
@@ -915,7 +939,10 @@ func (m *Model) renderArrayDetailView(proxyReq, respData map[string]interface{},
 				} else {
 					for i := 0; i < len(system); i++ {
 						if i == selectedIdx {
-							lines = append(lines, m.renderSystemSummary(system[i], i, contentStyle, mutedStyle, true)...)
+							m.detailState.selectedStartLine = len(lines) + 2
+							itemLines := m.renderSystemSummary(system[i], i, contentStyle, mutedStyle, true)
+							lines = append(lines, itemLines...)
+							m.detailState.selectedEndLine = len(lines) + 2
 						} else {
 							lines = append(lines, m.renderSystemSummary(system[i], i, contentStyle, mutedStyle, false)...)
 						}
@@ -934,7 +961,10 @@ func (m *Model) renderArrayDetailView(proxyReq, respData map[string]interface{},
 
 				for i := 0; i < len(messages); i++ {
 					if i == selectedIdx {
-						lines = append(lines, m.renderMessageItem(messages[i], i, contentStyle, mutedStyle, groupStyle, valueStyle)...)
+						m.detailState.selectedStartLine = len(lines) + 2
+						itemLines := m.renderMessageItem(messages[i], i, contentStyle, mutedStyle, groupStyle, valueStyle)
+						lines = append(lines, itemLines...)
+						m.detailState.selectedEndLine = len(lines) + 2
 					} else {
 						lines = append(lines, m.renderMessageSummary(messages[i], i, contentStyle, mutedStyle)...)
 					}
@@ -952,7 +982,10 @@ func (m *Model) renderArrayDetailView(proxyReq, respData map[string]interface{},
 
 				for i := 0; i < len(tools) && i < 20; i++ {
 					if i == selectedIdx {
-						lines = append(lines, m.renderToolItem(tools[i], i, contentStyle, mutedStyle, groupStyle, valueStyle)...)
+						m.detailState.selectedStartLine = len(lines) + 2
+						itemLines := m.renderToolItem(tools[i], i, contentStyle, mutedStyle, groupStyle, valueStyle)
+						lines = append(lines, itemLines...)
+						m.detailState.selectedEndLine = len(lines) + 2
 					} else {
 						lines = append(lines, m.renderToolSummary(tools[i], i, contentStyle, mutedStyle)...)
 					}
@@ -973,7 +1006,10 @@ func (m *Model) renderArrayDetailView(proxyReq, respData map[string]interface{},
 
 				for i := 0; i < len(choices) && i < 10; i++ {
 					if i == selectedIdx {
-						lines = append(lines, m.renderChoiceItem(choices[i], i, contentStyle, mutedStyle, groupStyle, valueStyle)...)
+						m.detailState.selectedStartLine = len(lines) + 2
+						itemLines := m.renderChoiceItem(choices[i], i, contentStyle, mutedStyle, groupStyle, valueStyle)
+						lines = append(lines, itemLines...)
+						m.detailState.selectedEndLine = len(lines) + 2
 					} else {
 						lines = append(lines, m.renderChoiceSummary(choices[i], i, contentStyle, mutedStyle)...)
 					}
@@ -1094,12 +1130,37 @@ func (m *Model) renderToolSummary(tool interface{}, idx int, contentStyle, muted
 	}
 
 	var name, desc string
+	// 1. 尝试从最外层读取
+	if n, ok := toolMap["name"].(string); ok {
+		name = n
+	}
+	if d, ok := toolMap["description"].(string); ok {
+		desc = truncate(d, 40)
+	}
+
+	// 2. 尝试从嵌套的 function 字段读取并覆盖
 	if fn, ok := toolMap["function"].(map[string]interface{}); ok {
 		if n, ok := fn["name"].(string); ok {
 			name = n
 		}
 		if d, ok := fn["description"].(string); ok {
 			desc = truncate(d, 40)
+		}
+	}
+
+	// 3. 如果依然没有 name，尝试读取 "type" 字段
+	if name == "" {
+		if t, ok := toolMap["type"].(string); ok {
+			name = "type: " + t
+		}
+	}
+
+	// 4. 如果最后什么都没读到，直接使用简短的 JSON 作为摘要以防空白
+	if name == "" && desc == "" {
+		if jsonBytes, err := json.Marshal(toolMap); err == nil {
+			name = truncate(string(jsonBytes), 50)
+		} else {
+			name = "未知工具"
 		}
 	}
 
@@ -1482,7 +1543,9 @@ func (m *Model) renderToolItem(tool interface{}, idx int, contentStyle, mutedSty
 	var lines []string
 	lines = append(lines, groupStyle.Render(fmt.Sprintf("  [%d] tool", idx)))
 
+	hasFn := false
 	if fn, ok := toolMap["function"].(map[string]interface{}); ok {
+		hasFn = true
 		if name, ok := fn["name"].(string); ok {
 			lines = append(lines, valueStyle.Render("  name: "+name))
 		}
@@ -1493,6 +1556,26 @@ func (m *Model) renderToolItem(tool interface{}, idx int, contentStyle, mutedSty
 			if jsonBytes, err := json.MarshalIndent(params, "    ", "  "); err == nil {
 				lines = append(lines, mutedStyle.Render("  parameters:"))
 				lines = append(lines, contentStyle.Render("    "+truncate(string(jsonBytes), 300)))
+			}
+		}
+	}
+
+	if !hasFn {
+		if name, ok := toolMap["name"].(string); ok {
+			lines = append(lines, valueStyle.Render("  name: "+name))
+		}
+		if desc, ok := toolMap["description"].(string); ok {
+			lines = append(lines, contentStyle.Render("  description: "+truncate(desc, 300)))
+		}
+		if params, ok := toolMap["parameters"].(map[string]interface{}); ok {
+			if jsonBytes, err := json.MarshalIndent(params, "    ", "  "); err == nil {
+				lines = append(lines, mutedStyle.Render("  parameters:"))
+				lines = append(lines, contentStyle.Render("    "+truncate(string(jsonBytes), 300)))
+			}
+		}
+		if len(lines) == 1 { // 只有 "tool" 一行，没有读到任何有效字段
+			if jsonBytes, err := json.MarshalIndent(toolMap, "  ", "  "); err == nil {
+				lines = append(lines, contentStyle.Render(string(jsonBytes)))
 			}
 		}
 	}
