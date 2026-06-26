@@ -37,26 +37,27 @@ type LogsClient interface {
 
 // Model 结构体存放日志TUI的状态
 type Model struct {
-	client        LogsClient
-	data          string
-	interval      int
-	model         string // 过滤模型
-	tick          int
-	quitting      bool
-	logData       *api.SpendLogsUIResponse
-	logDataOld    *api.SpendLogsResponse
-	seenLogIDs    map[string]bool    // 已看到的日志ID
-	newLogIDs     map[string]bool    // 本次新增的日志ID（用于高亮）
-	initialized   bool               // 是否已完成首次加载
-	width         int                // 窗口宽度
-	height        int                // 窗口高度
-	selectedIndex int                // 当前选中的日志索引
-	selectedEntry *api.SpendLogEntry // 当前选中的日志条目（用于详情页）
-	viewMode      string             // "list" 或 "detail"
-	detailData    map[string]interface{}
-	detailError   string
-	detailScroll  int              // 详情视图滚动偏移量
-	detailState   *detailViewState // 详情视图状态（展开/折叠）
+	client           LogsClient
+	data             string
+	interval         int
+	model            string // 过滤模型
+	tick             int
+	quitting         bool
+	logData          *api.SpendLogsUIResponse
+	logDataOld       *api.SpendLogsResponse
+	seenLogIDs       map[string]bool    // 已看到的日志ID
+	newLogIDs        map[string]bool    // 本次新增的日志ID（用于高亮）
+	initialized      bool               // 是否已完成首次加载
+	width            int                // 窗口宽度
+	height           int                // 窗口高度
+	selectedIndex    int                // 当前选中的日志索引
+	selectedEntry    *api.SpendLogEntry // 当前选中的日志条目（用于详情页）
+	listScrollOffset int                // 列表视图滚动偏移量
+	viewMode         string             // "list" 或 "detail"
+	detailData       map[string]interface{}
+	detailError      string
+	detailScroll     int              // 详情视图滚动偏移量
+	detailState      *detailViewState // 详情视图状态（展开/折叠）
 }
 
 // NewModel 构造工厂函数
@@ -156,6 +157,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.detailError = ""
 					m.detailScroll = 0
 					m.detailState = nil
+					m.listScrollOffset = 0
 				}
 			}
 			return m, nil
@@ -266,7 +268,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "up", "k", "ctrl+p":
+		case "up", "ctrl+p":
 			if m.viewMode == "detail" && m.detailState != nil && m.detailState.activeTab != "main" {
 				if m.detailState.itemDetailMode {
 					m.detailState.markdownScrollOffset = max(0, m.detailState.markdownScrollOffset-3)
@@ -277,8 +279,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if m.viewMode == "list" {
+				// 计算可见行数
+				availableRows := 50
+				if m.height > 10 {
+					availableRows = m.height - 10
+				}
+				visibleRows := availableRows - 2
+				if visibleRows < 1 {
+					visibleRows = 1
+				}
+
 				if m.selectedIndex > 0 {
 					m.selectedIndex--
+					// 如果选中项在可见范围上方，调整滚动偏移
+					if m.selectedIndex < m.listScrollOffset && m.listScrollOffset > 0 {
+						m.listScrollOffset--
+					}
 				}
 			} else if m.viewMode == "detail" && m.detailState != nil {
 				if m.detailState.activeTab == "main" {
@@ -291,7 +307,42 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "down", "j", "ctrl+n":
+		case "k":
+			if m.viewMode == "detail" && m.detailState != nil && m.detailState.activeTab == "main" {
+				// detail 主视图：k 切换到上一条日志
+				if m.selectedIndex > 0 {
+					m.selectedIndex--
+					m.detailScroll = 0
+					m.detailState = nil
+					return m, m.loadDetail()
+				}
+			} else if m.viewMode == "detail" && m.detailState != nil && m.detailState.activeTab != "main" {
+				if m.detailState.itemDetailMode {
+					m.detailState.markdownScrollOffset = max(0, m.detailState.markdownScrollOffset-3)
+				} else {
+					maxItems := m.getTabItemCount(m.detailState.activeTab)
+					if maxItems > 0 {
+						m.detailState.selectedItem = max(0, m.detailState.selectedItem-1)
+					}
+				}
+			} else if m.viewMode == "list" {
+				availableRows := 50
+				if m.height > 10 {
+					availableRows = m.height - 10
+				}
+				visibleRows := availableRows - 2
+				if visibleRows < 1 {
+					visibleRows = 1
+				}
+				if m.selectedIndex > 0 {
+					m.selectedIndex--
+					if m.selectedIndex < m.listScrollOffset && m.listScrollOffset > 0 {
+						m.listScrollOffset--
+					}
+				}
+			}
+			return m, nil
+		case "down", "ctrl+n":
 			if m.viewMode == "detail" && m.detailState != nil && m.detailState.activeTab != "main" {
 				if m.detailState.itemDetailMode {
 					m.detailState.markdownScrollOffset++
@@ -302,14 +353,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if m.viewMode == "list" {
+				visibleData := m.getVisibleData()
 				maxIdx := -1
-				if m.logData != nil && len(m.logData.Data) > 0 {
-					maxIdx = len(m.logData.Data) - 1
+				if len(visibleData) > 0 {
+					maxIdx = len(visibleData) - 1
 				} else if m.logDataOld != nil && len(*m.logDataOld) > 0 {
 					maxIdx = len(*m.logDataOld) - 1
 				}
+
+				// 计算可见行数
+				availableRows := 50
+				if m.height > 10 {
+					availableRows = m.height - 10
+				}
+				visibleRows := availableRows - 2 // 减去提示行
+				if visibleRows < 1 {
+					visibleRows = 1
+				}
+
 				if maxIdx >= 0 && m.selectedIndex < maxIdx {
 					m.selectedIndex++
+					// 如果选中项超出可见范围，调整滚动偏移
+					if m.selectedIndex >= m.listScrollOffset+visibleRows && m.listScrollOffset < maxIdx-visibleRows+1 {
+						m.listScrollOffset++
+					}
 				}
 			} else if m.viewMode == "detail" && m.detailState != nil {
 				if m.detailState.activeTab == "main" {
@@ -318,6 +385,55 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					maxItems := m.getTabItemCount(m.detailState.activeTab)
 					if maxItems > 0 {
 						m.detailState.selectedItem = min(maxItems-1, m.detailState.selectedItem+1)
+					}
+				}
+			}
+			return m, nil
+		case "j":
+			if m.viewMode == "detail" && m.detailState != nil && m.detailState.activeTab == "main" {
+				// detail 主视图：j 切换到下一条日志
+				visibleData := m.getVisibleData()
+				maxIdx := -1
+				if len(visibleData) > 0 {
+					maxIdx = len(visibleData) - 1
+				} else if m.logDataOld != nil && len(*m.logDataOld) > 0 {
+					maxIdx = len(*m.logDataOld) - 1
+				}
+				if maxIdx >= 0 && m.selectedIndex < maxIdx {
+					m.selectedIndex++
+					m.detailScroll = 0
+					m.detailState = nil
+					return m, m.loadDetail()
+				}
+			} else if m.viewMode == "detail" && m.detailState != nil && m.detailState.activeTab != "main" {
+				if m.detailState.itemDetailMode {
+					m.detailState.markdownScrollOffset++
+				} else {
+					maxItems := m.getTabItemCount(m.detailState.activeTab)
+					if maxItems > 0 {
+						m.detailState.selectedItem = min(maxItems-1, m.detailState.selectedItem+1)
+					}
+				}
+			} else if m.viewMode == "list" {
+				visibleData := m.getVisibleData()
+				maxIdx := -1
+				if len(visibleData) > 0 {
+					maxIdx = len(visibleData) - 1
+				} else if m.logDataOld != nil && len(*m.logDataOld) > 0 {
+					maxIdx = len(*m.logDataOld) - 1
+				}
+				availableRows := 50
+				if m.height > 10 {
+					availableRows = m.height - 10
+				}
+				visibleRows := availableRows - 2
+				if visibleRows < 1 {
+					visibleRows = 1
+				}
+				if maxIdx >= 0 && m.selectedIndex < maxIdx {
+					m.selectedIndex++
+					if m.selectedIndex >= m.listScrollOffset+visibleRows && m.listScrollOffset < maxIdx-visibleRows+1 {
+						m.listScrollOffset++
 					}
 				}
 			}
@@ -384,6 +500,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.logData = nil
 				m.logDataOld = respOld
+				m.listScrollOffset = 0
 				return m, nil
 			}
 
@@ -404,6 +521,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.logData = nil
 			m.logDataOld = respOld
+			m.listScrollOffset = 0
 			return m, nil
 		}
 
@@ -426,6 +544,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.logData = resp
 				m.logDataOld = nil
+				m.listScrollOffset = 0
 				return m, nil
 			}
 
@@ -440,6 +559,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.logData = resp
 			m.logDataOld = nil
+			m.listScrollOffset = 0
 			return m, nil
 		}
 	case DetailLoadedMsg:
@@ -585,7 +705,7 @@ func (m *Model) renderDetailView() string {
 	// 渲染头部
 	var header *components.Header
 	if m.detailState.activeTab == "main" {
-		header = components.NewHeader("日志详情", "ESC 返回 | ↑↓ 切换 | Tab 切换 | Enter 进入")
+		header = components.NewHeader("日志详情", "ESC 返回 | j/k 切换日志 | ↑↓ 切换卡片 | Tab | Enter")
 	} else if m.detailState.itemDetailMode {
 		tabName := map[string]string{
 			"system":   "System",
@@ -668,18 +788,25 @@ func (m *Model) renderDetailView() string {
 		availableLines := m.height - 4
 		return m.applyMarkdownScrollUnified(lines, availableLines)
 	} else {
-		// 普通模式：使用智能焦点追踪滚动
-		scrollOffset := m.detailState.scrollOffset
-		maxDisplayLines := m.height - 3
-		if maxDisplayLines < 10 {
-			maxDisplayLines = 20
+		// 普通模式：固定 header（前 2 行），只对内容部分做智能焦点追踪滚动
+		// lines[0] = header, lines[1] = 空行, lines[2:] = 内容
+		const headerLines = 2
+		contentLines := lines[headerLines:]
+		totalContent := len(contentLines)
+
+		// 可显示内容行数 = 总高度 - header 固定行 - 底部 help/指示器占用
+		maxDisplayLines := m.height - headerLines - 1
+		if maxDisplayLines < 8 {
+			maxDisplayLines = 8
 		}
 
-		totalLines := len(lines)
+		scrollOffset := m.detailState.scrollOffset
 
-		// 根据选中项在屏幕中的物理行坐标，自适应平滑滚动
-		startLine := m.detailState.selectedStartLine
-		endLine := m.detailState.selectedEndLine
+		// 根据选中项在内容区中的物理行坐标，自适应平滑滚动
+		// selectedStartLine / selectedEndLine 是相对于 lines（含 header）的索引，
+		// 需换算为相对于 contentLines 的索引
+		startLine := m.detailState.selectedStartLine - headerLines
+		endLine := m.detailState.selectedEndLine - headerLines
 
 		if startLine >= 0 && endLine >= 0 {
 			// 如果当前项的结束行超出了可视范围，向下滚动以完全包含它
@@ -693,8 +820,8 @@ func (m *Model) renderDetailView() string {
 		}
 
 		// 边界纠正
-		if scrollOffset > totalLines-maxDisplayLines {
-			scrollOffset = max(0, totalLines-maxDisplayLines)
+		if scrollOffset > totalContent-maxDisplayLines {
+			scrollOffset = max(0, totalContent-maxDisplayLines)
 		}
 		if scrollOffset < 0 {
 			scrollOffset = 0
@@ -702,24 +829,25 @@ func (m *Model) renderDetailView() string {
 		m.detailState.scrollOffset = scrollOffset
 
 		endLineIdx := scrollOffset + maxDisplayLines
-		if endLineIdx > totalLines {
-			endLineIdx = totalLines
+		if endLineIdx > totalContent {
+			endLineIdx = totalContent
 		}
-		visibleLines := lines[scrollOffset:endLineIdx]
+		visibleContent := contentLines[scrollOffset:endLineIdx]
 
-		// 构建最终输出
+		// 构建最终输出：header 固定在顶部，不参与滚动
 		var sb strings.Builder
-		for i, line := range visibleLines {
+		sb.WriteString(lines[0]) // header
+		sb.WriteString("\n")
+		sb.WriteString(lines[1]) // 空行
+		for _, line := range visibleContent {
+			sb.WriteString("\n")
 			sb.WriteString(line)
-			if i < len(visibleLines)-1 {
-				sb.WriteString("\n")
-			}
 		}
 
 		// 添加滚动指示器
-		if scrollOffset > 0 || endLineIdx < totalLines {
+		if scrollOffset > 0 || endLineIdx < totalContent {
 			sb.WriteString("\n")
-			sb.WriteString(mutedStyle.Render(fmt.Sprintf(" ──◀ %d/%d ▶─ ", scrollOffset+1, totalLines)))
+			sb.WriteString(mutedStyle.Render(fmt.Sprintf(" ──◀ %d/%d ▶─ ", scrollOffset+1, totalContent)))
 		}
 
 		return sb.String()
@@ -966,7 +1094,9 @@ func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mute
 	return lines
 }
 
-func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedStyle lipgloss.Style) []string {
+// renderLastMessagePreview 渲染 request 最后一条消息的预览，限制高度和宽度防止撑破卡片。
+// availWidth 为可用列宽（单位：字符），用于控制内部 word-wrap；传 0 则使用全屏宽度。
+func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedStyle lipgloss.Style, availWidth int) []string {
 
 	var lines []string
 	if proxyReq == nil {
@@ -987,18 +1117,51 @@ func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedS
 	}
 
 	content = strings.TrimSpace(content)
-	rendered := m.renderMarkdownFull(content)
+
+	// 用实际可用列宽（减去缩进）做 word-wrap，避免在双列布局中撑破左列
+	wrapWidth := availWidth - 6 // 6 = 4 空格缩进 + 2 余量
+	if wrapWidth < 30 {
+		wrapWidth = 30
+	}
+	if wrapWidth > 120 {
+		wrapWidth = 120
+	}
+
+	// tool role 消息内容通常是大 JSON，不需要 markdown 渲染，直接截取原始文本前几行
+	const maxMsgLines = 3
+	var flatLines []string
+	if role == "tool" {
+		rawLines := strings.Split(content, "\n")
+		for _, l := range rawLines {
+			// 按 wrapWidth 手动截断超长行
+			l = strings.TrimRight(l, " \t")
+			if len([]rune(l)) > wrapWidth {
+				l = string([]rune(l)[:wrapWidth-1]) + "…"
+			}
+			if l != "" {
+				flatLines = append(flatLines, l)
+			}
+		}
+	} else {
+		rendered := m.renderMarkdownWithWidth(content, wrapWidth)
+		// wrapText 返回的是含 \n 的单个字符串，必须展开成真实行后再截断
+		for _, r := range rendered {
+			for _, l := range strings.Split(r, "\n") {
+				flatLines = append(flatLines, l)
+			}
+		}
+	}
+
 	lines = append(lines, "")
 	lines = append(lines, mutedStyle.Render(fmt.Sprintf("  💬 最后消息 (%s):", role)))
 
-	maxMsgLines := 3 // 限制最多展示3行，超出省略，防止内容过长撑破主视图卡片
-	if len(rendered) <= maxMsgLines {
-		for _, rl := range rendered {
+	if len(flatLines) <= maxMsgLines {
+		for _, rl := range flatLines {
 			lines = append(lines, "    "+rl)
 		}
 	} else {
 		for i := 0; i < maxMsgLines; i++ {
-			lines = append(lines, "    "+rendered[i])
+			lines = append(lines, "    "+flatLines[i])
 		}
 		lines = append(lines, mutedStyle.Render("    ... [长消息已折叠，按 Enter/Tab 切换 messages 查看完整对话] ..."))
 	}
@@ -1073,7 +1236,9 @@ func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardSt
 			}
 		}
 
-		leftCol = append(leftCol, m.renderLastMessagePreview(proxyReq, mutedStyle)...)
+		// 宽屏时左列约占一半宽度，传入实际可用列宽以正确控制 word-wrap
+		leftColWidth := m.width/2 - 4
+		leftCol = append(leftCol, m.renderLastMessagePreview(proxyReq, mutedStyle, leftColWidth)...)
 
 		var metaInfo []string
 		if proxyReq != nil {
@@ -1195,7 +1360,8 @@ func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardSt
 			}
 		}
 
-		requestLines = append(requestLines, m.renderLastMessagePreview(proxyReq, mutedStyle)...)
+		// 窄屏时单列，传入全屏可用宽度
+		requestLines = append(requestLines, m.renderLastMessagePreview(proxyReq, mutedStyle, m.width-4)...)
 
 		var metaInfo []string
 		if proxyReq != nil {
@@ -2029,6 +2195,26 @@ func (m *Model) renderMarkdownFull(text string) []string {
 	lines := processMarkdownWithStyles(text, maxWidth, headingStyle, codeStyle, boldStyle, italicStyle, listStyle, quoteStyle)
 
 	return lines
+}
+
+// renderMarkdownWithWidth 与 renderMarkdownFull 相同，但使用调用方指定的宽度做 word-wrap，
+// 适用于需要按列宽（而非全屏宽）渲染的场景（如双列布局的左列预览）。
+func (m *Model) renderMarkdownWithWidth(text string, maxWidth int) []string {
+	if maxWidth < 30 {
+		maxWidth = 30
+	}
+	if maxWidth > 120 {
+		maxWidth = 120
+	}
+
+	headingStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
+	codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("154")).Background(lipgloss.Color("236"))
+	boldStyle := lipgloss.NewStyle().Bold(true)
+	italicStyle := lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("219"))
+	listStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
+	quoteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+
+	return processMarkdownWithStyles(text, maxWidth, headingStyle, codeStyle, boldStyle, italicStyle, listStyle, quoteStyle)
 }
 
 func (m *Model) applyMarkdownScroll(lines []string, maxDisplayLines int) []string {
@@ -2914,6 +3100,15 @@ func (m *Model) renderListView() string {
 	if m.height > 10 {
 		availableRows = m.height - 10
 	}
+	visibleRows := availableRows - 2
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	// 确保滚动偏移在有效范围内
+	if m.listScrollOffset < 0 {
+		m.listScrollOffset = 0
+	}
 
 	if m.logData != nil && len(m.logData.Data) > 0 {
 		filteredData := m.logData.Data
@@ -2926,9 +3121,51 @@ func (m *Model) renderListView() string {
 			}
 			filteredData = filtered
 		}
-		content.WriteString(renderLogsTable(filteredData, int(m.logData.Total), m.newLogIDs, availableRows, m.selectedIndex, m.width))
+
+		// 限制滚动偏移不超过数据末尾
+		if m.listScrollOffset > len(filteredData)-visibleRows && len(filteredData) > visibleRows {
+			m.listScrollOffset = len(filteredData) - visibleRows
+		}
+		if m.listScrollOffset < 0 {
+			m.listScrollOffset = 0
+		}
+
+		// 选中项超出范围时调整
+		if m.selectedIndex >= len(filteredData) {
+			m.selectedIndex = len(filteredData) - 1
+		}
+		if m.selectedIndex < 0 {
+			m.selectedIndex = 0
+		}
+
+		// 计算渲染用的索引（相对于可见范围）
+		renderIndex := m.selectedIndex - m.listScrollOffset
+
+		// 限制渲染索引
+		if renderIndex < 0 {
+			renderIndex = 0
+		}
+		if renderIndex >= visibleRows {
+			renderIndex = visibleRows - 1
+		}
+
+		content.WriteString(renderLogsTable(filteredData, int(m.logData.Total), m.newLogIDs, availableRows, m.listScrollOffset, m.width, renderIndex, visibleRows))
 	} else if m.logDataOld != nil && len(*m.logDataOld) > 0 {
-		content.WriteString(renderLogsTableOld(m.logDataOld, m.interval, m.newLogIDs, availableRows, m.selectedIndex))
+		// 旧格式数据也支持滚动
+		if m.listScrollOffset > len(*m.logDataOld)-visibleRows && len(*m.logDataOld) > visibleRows {
+			m.listScrollOffset = len(*m.logDataOld) - visibleRows
+		}
+		if m.listScrollOffset < 0 {
+			m.listScrollOffset = 0
+		}
+		renderIndex := m.selectedIndex - m.listScrollOffset
+		if renderIndex < 0 {
+			renderIndex = 0
+		}
+		if renderIndex >= visibleRows {
+			renderIndex = visibleRows - 1
+		}
+		content.WriteString(renderLogsTableOld(m.logDataOld, m.interval, m.newLogIDs, availableRows, m.listScrollOffset, renderIndex, visibleRows))
 	} else {
 		content.WriteString(components.NewPlaceholder("暂无数据").View())
 	}
@@ -2944,9 +3181,11 @@ func (m *Model) renderListView() string {
 func (m *Model) loadDetail() tea.Cmd {
 	var requestID string
 
-	if m.logData != nil && m.selectedIndex < len(m.logData.Data) {
-		requestID = m.logData.Data[m.selectedIndex].ID
-		m.selectedEntry = &m.logData.Data[m.selectedIndex]
+	// Use filtered data for selection
+	visibleData := m.getVisibleData()
+	if len(visibleData) > 0 && m.selectedIndex < len(visibleData) {
+		requestID = visibleData[m.selectedIndex].ID
+		m.selectedEntry = &visibleData[m.selectedIndex]
 	} else if m.logDataOld != nil && m.selectedIndex < len(*m.logDataOld) {
 		if id, ok := (*m.logDataOld)[m.selectedIndex]["request_id"]; ok {
 			requestID, _ = id.(string)
@@ -2983,6 +3222,23 @@ func (m *Model) loadDetail() tea.Cmd {
 		}
 		return DetailLoadedMsg{Data: detail}
 	}
+}
+
+// getVisibleData returns the filtered log data based on model filter
+func (m *Model) getVisibleData() []api.SpendLogEntry {
+	if m.logData == nil {
+		return nil
+	}
+	if m.model == "" {
+		return m.logData.Data
+	}
+	var filtered []api.SpendLogEntry
+	for _, entry := range m.logData.Data {
+		if strings.Contains(entry.Model, m.model) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
 }
 
 func (m *Model) getTabItemCount(tab string) int {
@@ -3098,7 +3354,7 @@ func formatLocalTime(utcTime string) string {
 	return utcTime
 }
 
-func renderLogsTable(data []api.SpendLogEntry, total int, newLogIDs map[string]bool, maxRows int, selectedIndex int, width int) string {
+func renderLogsTable(data []api.SpendLogEntry, total int, newLogIDs map[string]bool, maxRows int, scrollOffset int, width int, renderIndex int, visibleRows int) string {
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
 	contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -3281,14 +3537,22 @@ func renderLogsTable(data []api.SpendLogEntry, total int, newLogIDs map[string]b
 	sb.WriteString(mutedStyle.Render(strings.Repeat("─", width)) + "\n")
 
 	rowCount := 0
-	for i, entry := range data {
-		if maxRows > 0 && rowCount >= maxRows-2 {
-			sb.WriteString(mutedStyle.Render(fmt.Sprintf("\n... 还有 %d 条记录 (总 %d)", len(data)-rowCount, total)))
+	dataLen := len(data)
+	for i := 0; i < dataLen; i++ {
+		// 根据滚动偏移计算实际显示的数据索引
+		actualIndex := scrollOffset + i
+		if actualIndex >= dataLen {
+			break
+		}
+		entry := data[actualIndex]
+
+		if maxRows > 0 && i >= visibleRows {
+			sb.WriteString(mutedStyle.Render(fmt.Sprintf("\n... 还有 %d 条记录 (总 %d)", dataLen-(scrollOffset+visibleRows), total)))
 			break
 		}
 		rowCount++
 
-		isSelected := i == selectedIndex
+		isSelected := i == renderIndex
 		startTime := formatLocalTime(entry.StartTime)
 		isNew := newLogIDs != nil && newLogIDs[entry.ID]
 
@@ -3389,7 +3653,7 @@ func renderLogsTable(data []api.SpendLogEntry, total int, newLogIDs map[string]b
 	return sb.String()
 }
 
-func renderLogsTableOld(resp *api.SpendLogsResponse, intervalVal int, newLogIDs map[string]bool, maxRows int, selectedIndex int) string {
+func renderLogsTableOld(resp *api.SpendLogsResponse, intervalVal int, newLogIDs map[string]bool, maxRows int, scrollOffset int, renderIndex int, visibleRows int) string {
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
 	contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -3398,15 +3662,26 @@ func renderLogsTableOld(resp *api.SpendLogsResponse, intervalVal int, newLogIDs 
 	var sb strings.Builder
 	sb.WriteString(headerStyle.Render(fmt.Sprintf(" 📊 LiteLLM 日志 (刷新: %ds) | Ctrl+C 退出 ", intervalVal)) + "\n\n")
 
+	respLen := len(*resp)
 	rowCount := 0
+	displayed := 0
+
+	// 跳过 scrollOffset 条记录
+	skipped := 0
 	for _, entry := range *resp {
-		if maxRows > 0 && rowCount >= maxRows {
-			sb.WriteString(mutedStyle.Render(fmt.Sprintf("\n... 还有 %d 条记录", len(*resp)-rowCount)))
+		if skipped < scrollOffset {
+			skipped++
+			continue
+		}
+
+		if maxRows > 0 && displayed >= visibleRows {
+			sb.WriteString(mutedStyle.Render(fmt.Sprintf("\n... 还有 %d 条记录", respLen-(scrollOffset+displayed))))
 			break
 		}
 
 		spendVal, hasSpend := entry["spend"]
 		if hasSpend {
+			displayed++
 			spend, _ := spendVal.(float64)
 
 			keyLabel := "当前 Key"
