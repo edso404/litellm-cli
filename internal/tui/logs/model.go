@@ -541,6 +541,42 @@ func (m *Model) renderDetailView() string {
 	proxyReq, _ := m.detailData["proxy_server_request"].(map[string]interface{})
 	respData, _ := m.detailData["response"].(map[string]interface{})
 
+	// 在渲染 Header 之前，预先收集单项详情中的可聚焦 Block 列表，解决头部与主体渲染的时序依赖 Bug
+	if m.detailState != nil && m.detailState.itemDetailMode && m.detailState.activeTab != "main" {
+		var availableBlocks []string
+		itemData := m.getArrayItem(m.detailState.activeTab, m.detailState.currentItemIndex)
+		if itemData != nil {
+			var rawText string
+			if m.detailState.activeTab == "choices" {
+				if choiceMap, ok := itemData.(map[string]interface{}); ok {
+					msg, ok := choiceMap["message"].(map[string]interface{})
+					if !ok {
+						msg, _ = choiceMap["delta"].(map[string]interface{})
+					}
+					if msg != nil {
+						rawText = extractMessageContentFull(msg)
+					} else if text, ok := choiceMap["text"].(string); ok {
+						rawText = text
+					}
+				}
+			} else if m.detailState.activeTab == "messages" {
+				if msgMap, ok := itemData.(map[string]interface{}); ok {
+					rawText = extractMessageContentFull(msgMap)
+				}
+			}
+			if rawText != "" {
+				thinking, cleanText := extractThinking(rawText)
+				if thinking != "" {
+					availableBlocks = append(availableBlocks, "thinking")
+				}
+				if cleanText != "" {
+					availableBlocks = append(availableBlocks, "content")
+				}
+			}
+		}
+		m.detailState.blocks = availableBlocks
+	}
+
 	var lines []string
 
 	// 渲染头部
@@ -554,7 +590,11 @@ func (m *Model) renderDetailView() string {
 			"messages": "Message",
 			"choices":  "Choice",
 		}[m.detailState.activeTab]
-		header = components.NewHeader(fmt.Sprintf("日志详情 > %s[%d]", tabName, m.detailState.currentItemIndex), "ESC 返回列表 | ↑↓ 滚动")
+		subtitle := "ESC 返回列表 | ↑↓ 滚动"
+		if len(m.detailState.blocks) > 0 {
+			subtitle = "ESC 返回列表 | ↑↓ 滚动 | Tab 切换思考/正文"
+		}
+		header = components.NewHeader(fmt.Sprintf("日志详情 > %s[%d]", tabName, m.detailState.currentItemIndex), subtitle)
 	} else {
 		tabTitle := map[string]string{
 			"system":   "System Messages",
