@@ -2,10 +2,15 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 
+	"github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"litellm-cli/internal/client"
+	"litellm-cli/internal/config"
+	"litellm-cli/internal/tui/dashboard"
 )
 
 var cfgFile string
@@ -14,9 +19,14 @@ var rootCmd = &cobra.Command{
 	Use:   "litellm-cli",
 	Short: "LiteLLM CLI - 查看 API 用量统计和日志",
 	Long: `LiteLLM CLI 工具
+- 直接运行启动 Dashboard
 - stats: 查看用量统计
 - logs: 轮询查看日志
 - models: 查看可用模型`,
+	Run: func(cmd *cobra.Command, args []string) {
+		// 没有子命令时启动 Dashboard
+		runDashboard()
+	},
 }
 
 func Execute() error {
@@ -58,5 +68,24 @@ func initConfig() {
 		// 配置文件存在
 	} else if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 		fmt.Fprintln(os.Stderr, "读取配置文件失败:", err)
+	}
+}
+
+// runDashboard 启动 Dashboard TUI
+func runDashboard() {
+	cfg, err := config.LoadWithAutoLogin()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	c := client.New(cfg)
+
+	p := tea.NewProgram(
+		dashboard.NewModel(c.API(), c.GetAPIKey()),
+		tea.WithAltScreen(),
+	)
+
+	if err := p.Start(); err != nil {
+		log.Fatal(err)
 	}
 }

@@ -49,6 +49,11 @@ func (c *Client) GetAPIKey() string {
 	return c.config.APIKey
 }
 
+// API returns the underlying API client
+func (c *Client) API() *api.Client {
+	return c.api
+}
+
 func (c *Client) GetTeamAvailable() (*api.TeamAvailableResponse, error) {
 	return c.api.GetTeamAvailable()
 }

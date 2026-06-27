@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -15,7 +16,10 @@ var keyInfoCmd = &cobra.Command{
 	Run:   runKeyInfo,
 }
 
+var jsonOutKeyinfo bool
+
 func init() {
+	keyInfoCmd.Flags().BoolVar(&jsonOutKeyinfo, "json", false, "JSON 格式输出")
 	rootCmd.AddCommand(keyInfoCmd)
 }
 
@@ -30,6 +34,13 @@ func runKeyInfo(cmd *cobra.Command, args []string) {
 	resp, err := c.GetKeyInfo(c.GetAPIKey())
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// JSON 输出模式
+	if jsonOutKeyinfo {
+		jsonBytes, _ := json.MarshalIndent(resp, "", "  ")
+		fmt.Println(string(jsonBytes))
+		return
 	}
 
 	fmt.Println("\n🔑 Key 详情:")

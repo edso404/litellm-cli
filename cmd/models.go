@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -15,7 +16,10 @@ var modelsCmd = &cobra.Command{
 	Run:   runModels,
 }
 
+var jsonOutModels bool
+
 func init() {
+	modelsCmd.Flags().BoolVar(&jsonOutModels, "json", false, "JSON 格式输出")
 	rootCmd.AddCommand(modelsCmd)
 }
 
@@ -30,6 +34,13 @@ func runModels(cmd *cobra.Command, args []string) {
 	resp, err := c.GetModels()
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// JSON 输出模式
+	if jsonOutModels {
+		jsonBytes, _ := json.MarshalIndent(resp, "", "  ")
+		fmt.Println(string(jsonBytes))
+		return
 	}
 
 	fmt.Println("\n📦 可用模型列表:")

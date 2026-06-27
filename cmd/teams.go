@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -15,7 +16,10 @@ var teamsCmd = &cobra.Command{
 	Run:   runTeams,
 }
 
+var jsonOutTeams bool
+
 func init() {
+	teamsCmd.Flags().BoolVar(&jsonOutTeams, "json", false, "JSON 格式输出")
 	rootCmd.AddCommand(teamsCmd)
 }
 
@@ -30,6 +34,13 @@ func runTeams(cmd *cobra.Command, args []string) {
 	resp, err := c.GetUserInfo()
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// JSON 输出模式
+	if jsonOutTeams {
+		jsonBytes, _ := json.MarshalIndent(resp, "", "  ")
+		fmt.Println(string(jsonBytes))
+		return
 	}
 
 	fmt.Println("\n👥 可用团队列表:")

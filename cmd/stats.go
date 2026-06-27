@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -16,6 +18,7 @@ var (
 	by       string
 	fromDate string
 	toDate   string
+	jsonOutStats bool
 )
 
 var statsCmd = &cobra.Command{
@@ -29,6 +32,7 @@ func init() {
 	statsCmd.Flags().StringVar(&by, "by", "user", "聚合维度: user, team, model")
 	statsCmd.Flags().StringVar(&fromDate, "from", "", "开始日期 (YYYY-MM-DD)")
 	statsCmd.Flags().StringVar(&toDate, "to", "", "结束日期 (YYYY-MM-DD)")
+	statsCmd.Flags().BoolVar(&jsonOutStats, "json", false, "JSON 格式输出")
 	rootCmd.AddCommand(statsCmd)
 }
 
@@ -42,6 +46,12 @@ func runStats(cmd *cobra.Command, args []string) {
 
 	startDate, endDate := getDateRange(period)
 
+	// JSON 输出模式
+	if jsonOutStats {
+		outputStatsJSON(c, startDate, endDate)
+		return
+	}
+
 	m := stats.NewModel(c, startDate, endDate)
 	m.By = by
 
@@ -53,6 +63,25 @@ func runStats(cmd *cobra.Command, args []string) {
 
 	if err := p.Start(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// outputStatsJSON 以 JSON 格式输出统计
+func outputStatsJSON(c *client.Client, startDate, endDate string) {
+	if by == "team" {
+		resp, err := c.GetTeamDailyActivity(startDate, endDate)
+		if err != nil {
+			log.Fatal(err)
+		}
+		jsonBytes, _ := json.MarshalIndent(resp, "", "  ")
+		fmt.Println(string(jsonBytes))
+	} else {
+		resp, err := c.GetUserDailyActivity(startDate, endDate)
+		if err != nil {
+			log.Fatal(err)
+		}
+		jsonBytes, _ := json.MarshalIndent(resp, "", "  ")
+		fmt.Println(string(jsonBytes))
 	}
 }
 

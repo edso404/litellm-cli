@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"sort"
@@ -21,9 +22,11 @@ var teamCmd = &cobra.Command{
 }
 
 var teamID string
+var jsonOutTeam bool
 
 func init() {
 	teamCmd.Flags().StringVar(&teamID, "team-id", "", "团队 ID (不指定则显示所有团队)")
+	teamCmd.Flags().BoolVar(&jsonOutTeam, "json", false, "JSON 格式输出")
 	rootCmd.AddCommand(teamCmd)
 }
 
@@ -62,7 +65,99 @@ func runTeam(cmd *cobra.Command, args []string) {
 		targetTeam = &userInfo.Teams[0]
 	}
 
+	// JSON 输出模式
+	if jsonOutTeam {
+		outputTeamRankJSON(targetTeam, userInfo.UserID)
+		return
+	}
+
 	printTeamLeaderboard(targetTeam, userInfo.UserID)
+}
+
+// outputTeamRankJSON 以 JSON 格式输出团队排行
+func outputTeamRankJSON(team *api.UserTeam, currentUserID string) {
+	// 构建 user_id -> email 映射
+	userEmailMap := make(map[string]string)
+	for _, m := range team.MembersWithRoles {
+		userEmailMap[m.UserID] = m.Email
+	}
+
+	// 按 user_id 聚合用量
+	userSpend := make(map[string]float64)
+	for _, k := range team.Keys {
+		if k.UserID != "" {
+			userSpend[k.UserID] += k.Spend
+		}
+	}
+
+	// 计算团队总用量
+	var totalSpend float64
+	for _, s := range userSpend {
+		totalSpend += s
+	}
+
+	// 构建排名
+	type userRank struct {
+		UserID  string  `json:"user_id"`
+		Email   string  `json:"email"`
+		Spend   float64 `json:"spend"`
+		Percent float64 `json:"percent"`
+		Rank    int     `json:"rank"`
+		IsMe    bool    `json:"is_me"`
+	}
+	var ranks []userRank
+	for uid, spend := range userSpend {
+		email := userEmailMap[uid]
+		if email == "" {
+			email = uid[:8] + "..."
+		}
+		percent := 0.0
+		if totalSpend > 0 {
+			percent = (spend / totalSpend) * 100
+		}
+		ranks = append(ranks, userRank{
+			UserID:  uid,
+			Email:   email,
+			Spend:   spend,
+			Percent: percent,
+			IsMe:    uid == currentUserID,
+		})
+	}
+
+	// 按用量降序排序
+	sort.Slice(ranks, func(i, j int) bool {
+		return ranks[i].Spend > ranks[j].Spend
+	})
+
+	// 设置排名
+	for i := range ranks {
+		ranks[i].Rank = i + 1
+	}
+
+	// 输出 JSON
+	type output struct {
+		TeamID      string     `json:"team_id"`
+		TeamAlias   string     `json:"team_alias"`
+		TotalSpend  float64    `json:"total_spend"`
+		CurrentRank *userRank   `json:"current_user_rank,omitempty"`
+		Ranks       []userRank  `json:"ranks"`
+	}
+	var currentRank *userRank
+	for i := range ranks {
+		if ranks[i].IsMe {
+			currentRank = &ranks[i]
+			break
+		}
+	}
+	o := output{
+		TeamID:      team.TeamID,
+		TeamAlias:   team.TeamAlias,
+		TotalSpend:  totalSpend,
+		CurrentRank: currentRank,
+		Ranks:       ranks,
+	}
+	jsonBytes, _ := json.MarshalIndent(o, "", "  ")
+	fmt.Println(string(jsonBytes))
 }
 
 func printTeamLeaderboard(team *api.UserTeam, currentUserID string) {
