@@ -6,6 +6,11 @@ import (
 )
 
 func TestGetBaseURLDefault(t *testing.T) {
+	// 确保环境变量不影响测试
+	oldURL := os.Getenv("LITELLM_BASE_URL")
+	os.Unsetenv("LITELLM_BASE_URL")
+	defer os.Setenv("LITELLM_BASE_URL", oldURL)
+
 	// 验证默认值
 	expected := "http://localhost:4000"
 	actual := GetBaseURL()
