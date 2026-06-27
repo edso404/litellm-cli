@@ -239,14 +239,6 @@ func (m *Model) View() string {
 	sb.WriteString(m.renderBarContent(barWidth))
 	sb.WriteString("\n")
 
-	// 帮助信息
-	help := components.NewHelp([]components.HelpKey{
-		{Key: "1-5", Desc: "时间范围"},
-		{Key: "j/k 或 ↓/↑", Desc: "移动选择"},
-		{Key: "q", Desc: "退出"},
-	})
-	sb.WriteString(help.View(m.width))
-
 	return sb.String()
 }
 
