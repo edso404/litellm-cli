@@ -31,6 +31,7 @@ type Model struct {
 	err              string
 	loading          bool
 	By               string // Aggregation dimension: "user", "team", etc.
+	showHeader       bool   // 是否显示顶部 header（在 dashboard 中隐藏）
 }
 
 type aggregatedMetrics struct {
@@ -62,6 +63,7 @@ func NewModel(client StatsClient, startDate, endDate string) *Model {
 		height:           40,
 		loading:          true,
 		By:               "user",
+		showHeader:      true, // 默认显示 header
 	}
 }
 
@@ -153,11 +155,26 @@ func (m *Model) View() string {
 
 	var sb strings.Builder
 
-	if isLargeScreen {
-		header := components.NewHeader("用量统计看板", fmt.Sprintf("%s - %s | 按 q 退出", m.startDate, m.endDate))
-		sb.WriteString(header.View(m.width))
-		sb.WriteString("\n\n")
+	// 显示 header（如果启用）
+	if m.showHeader {
+		if isLargeScreen {
+			header := components.NewHeader("用量统计看板", fmt.Sprintf("%s - %s | 按 q 退出", m.startDate, m.endDate))
+			sb.WriteString(header.View(m.width))
+			sb.WriteString("\n\n")
+		} else if m.viewMode == "bar" {
+			header := components.NewHeader("每日花费", fmt.Sprintf("%s - %s | 按 Tab 切换视图 | 按 q 退出", m.startDate, m.endDate))
+			sb.WriteString(header.View(m.width))
+			sb.WriteString("\n\n")
+		} else {
+			header := components.NewHeader("用量统计", fmt.Sprintf("%s - %s | 按 Tab 切换视图 | 按 q 退出", m.startDate, m.endDate))
+			sb.WriteString(header.View(m.width))
+			sb.WriteString("\n\n")
+		}
+	}
 
+	// 根据屏幕大小和视图模式显示内容
+	if isLargeScreen {
+		// 大屏：同时显示 counter 和 bar（横向排列），帮助信息显示 j/k 导航
 		leftWidth := 55
 		rightWidth := m.width - leftWidth - 4
 
@@ -178,10 +195,8 @@ func (m *Model) View() string {
 		})
 		sb.WriteString(help.View(m.width))
 	} else {
+		// 小屏幕模式 (复用原有的 else 分支代码)
 		if m.viewMode == "bar" {
-			header := components.NewHeader("每日花费", fmt.Sprintf("%s - %s | 按 Tab 切换视图 | 按 q 退出", m.startDate, m.endDate))
-			sb.WriteString(header.View(m.width))
-			sb.WriteString("\n\n")
 			sb.WriteString(m.renderBarContent(m.width))
 			sb.WriteString("\n\n")
 
@@ -192,9 +207,6 @@ func (m *Model) View() string {
 			})
 			sb.WriteString(help.View(m.width))
 		} else {
-			header := components.NewHeader("用量统计", fmt.Sprintf("%s - %s | 按 Tab 切换视图 | 按 q 退出", m.startDate, m.endDate))
-			sb.WriteString(header.View(m.width))
-			sb.WriteString("\n\n")
 			sb.WriteString(m.renderCounterContent(m.width))
 			sb.WriteString("\n\n")
 
@@ -456,4 +468,9 @@ func formatTokens(n int64) string {
 		return fmt.Sprintf("%.1fK", float64(n)/1_000)
 	}
 	return fmt.Sprintf("%d", n)
+}
+
+// ShowHeader 控制是否显示顶部 header
+func (m *Model) ShowHeader(show bool) {
+	m.showHeader = show
 }

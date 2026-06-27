@@ -58,6 +58,7 @@ type Model struct {
 	detailError      string
 	detailScroll     int              // 详情视图滚动偏移量
 	detailState      *detailViewState // 详情视图状态（展开/折叠）
+	showHeader       bool             // 是否显示顶部 header（在 dashboard 中隐藏）
 }
 
 // NewModel 构造工厂函数
@@ -73,6 +74,7 @@ func NewModel(client LogsClient, interval int, modelFilter string) *Model {
 		height:        40,     // 默认高度
 		viewMode:      "list", // 默认视图模式
 		selectedIndex: 0,
+		showHeader:    true,   // 默认显示 header
 	}
 	return m
 }
@@ -3172,10 +3174,13 @@ func (m *Model) renderListView() string {
 
 	header := components.NewHeader("LiteLLM 日志", fmt.Sprintf("刷新: %ds | ↑↓ 选择 | Enter 详情 | q 退出", m.interval))
 
-	return header.View(m.width) +
-		"\n\n" +
-		content.String() +
+	result := content.String() +
 		fmt.Sprintf("\n\n⏱ 更新次数: %d | 时间: %s", m.tick, time.Now().Format("15:04:05"))
+
+	if m.showHeader {
+		return header.View(m.width) + "\n\n" + result
+	}
+	return result
 }
 
 func (m *Model) loadDetail() tea.Cmd {
@@ -3721,4 +3726,9 @@ func copyToClipboardOSC52(text string) tea.Cmd {
 		_, _ = os.Stdout.WriteString(fmt.Sprintf("\x1b]52;c;%s\x07", b64))
 		return nil
 	}
+}
+
+// ShowHeader 控制是否显示顶部 header
+func (m *Model) ShowHeader(show bool) {
+	m.showHeader = show
 }

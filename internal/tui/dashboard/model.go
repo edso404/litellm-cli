@@ -79,10 +79,12 @@ func NewModel(client *api.Client, apiKey string) *Model {
 }
 
 func (m *Model) initChildModels() {
-	// Logs - 使用实际的 client
+	// Logs - 使用实际的 client，隐藏 header
 	m.Logs = logs.NewModel(clientAdapter{client: m.apiClient}, 5, "")
-	// Stats - 使用团队维度的数据
+	m.Logs.ShowHeader(false)
+	// Stats - 使用团队维度的数据，隐藏 header
 	m.Stats = stats.NewModel(statsClientAdapter{client: m.apiClient}, "", "team")
+	m.Stats.ShowHeader(false)
 	// Team Rank - 使用适配器
 	m.TeamRank = newTeamRankModel(NewTeamRankClientAdapter(m.apiClient))
 	// Panels

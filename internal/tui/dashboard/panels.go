@@ -143,14 +143,6 @@ func (m *modelsTabModel) View() string {
 
 	var sb strings.Builder
 
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("236"))
-
-	sb.WriteString(titleStyle.Render(" 📦 模型列表 "))
-	sb.WriteString("\n\n")
-
 	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
@@ -258,14 +250,6 @@ func (m *teamsTabModel) View() string {
 
 	var sb strings.Builder
 
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("236"))
-
-	sb.WriteString(titleStyle.Render(" 👥 团队列表 "))
-	sb.WriteString("\n\n")
-
 	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	cyanStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("51")).Bold(true)
@@ -372,14 +356,6 @@ func (m *keyinfoTabModel) View() string {
 	}
 
 	var sb strings.Builder
-
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("236"))
-
-	sb.WriteString(titleStyle.Render(" 🔑 Key 详情 "))
-	sb.WriteString("\n\n")
 
 	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -505,14 +481,6 @@ func (m *loginTabModel) View() string {
 	}
 
 	var sb strings.Builder
-
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("236"))
-
-	sb.WriteString(titleStyle.Render(" 🔐 登录信息 "))
-	sb.WriteString("\n\n")
 
 	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))

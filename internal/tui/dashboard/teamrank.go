@@ -144,15 +144,6 @@ func (m *teamRankModel) View() string {
 
 	var sb strings.Builder
 
-	// 渲染标题
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Background(lipgloss.Color("236"))
-
-	sb.WriteString(title.Render(fmt.Sprintf(" 🏆 %s 用量排行榜 ", m.data.TeamAlias)))
-	sb.WriteString("\n\n")
-
 	// 总用量
 	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
