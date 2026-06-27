@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          check-latest: true
+      - run: go test -v -race ./...
+        env:
+          TZ: Asia/Shanghai
+
+  build:
+    name: Build
+    needs: [test]
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          check-latest: true
+      - name: Build
+        run: |
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -ldflags "-s -w" \
+            -o "litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}" .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: release
+          merge-multiple: true
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum litellm-cli-* > checksums.txt
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: release/*
+          generate_release_notes: true
