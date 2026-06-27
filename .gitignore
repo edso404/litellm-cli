@@ -1,6 +1,11 @@
 # Binaries
 bin/
 litellm-cli
+litellm-cli-darwin-*
+litellm-cli-linux-*
+
+# Release artifacts
+release/
 
 # Test binary
 *.test
@@ -13,3 +18,9 @@ go.work
 
 # Dependency directories
 vendor/
+
+# IDE and local config
+.omo/
+
+# Runtime logs
+*.log

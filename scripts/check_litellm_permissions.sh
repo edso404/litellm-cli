@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# LiteLLM API 权限探测脚本 v2 - 更全面
-# 用法: ./check_permissions_v2.sh <API_KEY> [BASE_URL]
+# LiteLLM API 权限探测脚本
+# 用法: ./check_permissions.sh <API_KEY> [BASE_URL]
 
 API_KEY="${1:-$LITELLM_API_KEY}"
-BASE_URL="${2:-http://localhost:4000}"
+BASE_URL="${2:-${LITELLM_BASE_URL:-http://localhost:4000}}"
 
 if [ -z "$API_KEY" ]; then
     echo "请传入 API_KEY 或设置 LITELLM_API_KEY 环境变量"
@@ -13,7 +13,7 @@ if [ -z "$API_KEY" ]; then
 fi
 
 echo "============================================"
-echo "LiteLLM API 权限探测 v2 (增强版)"
+echo "LiteLLM API 权限探测"
 echo "API Key: ${API_KEY:0:10}..."
 echo "Base URL: $BASE_URL"
 echo "============================================"
