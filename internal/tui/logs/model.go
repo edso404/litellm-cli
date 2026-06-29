@@ -1786,11 +1786,22 @@ func extractMessageContentFull(msg interface{}) string {
 	// 2. 如果 content 是对象数组 ([]interface{})
 	if list, ok := contentRaw.([]interface{}); ok {
 		var parts []string
+		// 分别收集不同类型的 block
+		var textBlocks []string
+		var toolUseBlocks []string
+		var toolResultBlocks []string
+		var imageBlocks []string
+		var otherBlocks []string
+
 		for _, item := range list {
 			if itemMap, ok := item.(map[string]interface{}); ok {
 				itemType, _ := itemMap["type"].(string)
 				if text, ok := itemMap["text"].(string); ok && text != "" {
-					parts = append(parts, text)
+					// text 类型且内容非空
+					textBlocks = append(textBlocks, text)
+				} else if itemType == "text" && text == "" {
+					// text 类型但内容为空，跳过（不渲染）
+					continue
 				} else if itemType == "tool_use" || itemType == "tool_call" {
 					toolName, _ := itemMap["name"].(string)
 					toolID, _ := itemMap["id"].(string)
@@ -1802,37 +1813,55 @@ func extractMessageContentFull(msg interface{}) string {
 					} else if args, ok := itemMap["arguments"].(string); ok {
 						inputStr = args
 					}
-					parts = append(parts, fmt.Sprintf("\n\n🔧 **[Tool Use: %s (ID: %s)]**\n`input: %s`\n\n", toolName, toolID, inputStr))
+					toolUseBlocks = append(toolUseBlocks, fmt.Sprintf("🔧 **[Tool Use: %s (ID: %s)]**\n`input: %s`", toolName, toolID, inputStr))
 				} else if itemType == "tool_result" {
-					// tool_result 类型不应使用 markdown 渲染，应作为代码块显示
 					var resultContent string
 					if content, ok := itemMap["content"].(string); ok {
 						resultContent = content
 					} else if content, ok := itemMap["content"].(map[string]interface{}); ok {
-						// 尝试解析为 JSON
 						if bytes, err := json.MarshalIndent(content, "", "  "); err == nil {
 							resultContent = string(bytes)
 						} else {
 							resultContent = fmt.Sprintf("%v", content)
 						}
 					}
-					// 尝试获取 tool_use_id
 					toolUseID, _ := itemMap["tool_use_id"].(string)
 					if toolUseID != "" {
-						parts = append(parts, fmt.Sprintf("\n\n📥 **[Tool Result: %s]**\n```\n%s\n```\n\n", toolUseID, resultContent))
+						toolResultBlocks = append(toolResultBlocks, fmt.Sprintf("📥 **[Tool Result: %s]**\n```\n%s\n```", toolUseID, resultContent))
 					} else {
-						parts = append(parts, fmt.Sprintf("\n\n📥 **[Tool Result]**\n```\n%s\n```\n\n", resultContent))
+						toolResultBlocks = append(toolResultBlocks, fmt.Sprintf("📥 **[Tool Result]**\n```\n%s\n```", resultContent))
 					}
 				} else if itemType == "image" {
-					parts = append(parts, "\n\n🖼️ **[Image Block]**\n\n")
+					imageBlocks = append(imageBlocks, "🖼️ **[Image Block]**")
 				} else {
 					if bytes, err := json.Marshal(itemMap); err == nil {
-						parts = append(parts, fmt.Sprintf("\n\n```json\n%s\n```\n\n", string(bytes)))
+						otherBlocks = append(otherBlocks, fmt.Sprintf("```json\n%s\n```", string(bytes)))
 					}
 				}
 			} else if s, ok := item.(string); ok {
-				parts = append(parts, s)
+				textBlocks = append(textBlocks, s)
 			}
+		}
+
+		// 按顺序组装：text → tool_use → tool_result → image → other
+		for _, t := range textBlocks {
+			parts = append(parts, t)
+		}
+		for _, t := range toolUseBlocks {
+			parts = append(parts, "\n\n"+t)
+		}
+		for _, t := range toolResultBlocks {
+			parts = append(parts, "\n\n"+t)
+		}
+		for _, t := range imageBlocks {
+			parts = append(parts, "\n\n"+t)
+		}
+		for _, t := range otherBlocks {
+			parts = append(parts, "\n\n"+t)
+		}
+
+		if len(parts) == 0 {
+			return ""
 		}
 		return strings.Join(parts, "\n\n")
 	}

@@ -137,8 +137,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// 转发窗口大小给当前活动子模型，确保 stats 能获取正确的宽度
-		child, cmd := m.activeModel().Update(msg)
+
+		// 计算子模型可用的实际高度（减去 dashboard 的 header 和 footer）
+		// header: Tab bar (1 行) + 空行 (1 行) = 2 行
+		// footer: 帮助信息 (1 行) + 空行 (1 行) = 2 行（或者 logs tab 可能更少）
+		availableHeight := msg.Height - 4
+		if availableHeight < 10 {
+			availableHeight = 10
+		}
+
+		// 转发窗口大小给当前活动子模型，确保子模型能获取正确的高度
+		child, cmd := m.activeModel().Update(tea.WindowSizeMsg{Width: msg.Width, Height: availableHeight})
 		return m.updateChildModel(child, cmd)
 
 	// 处理各子模型加载完成的消息，路由到对应的子模型
@@ -215,17 +224,23 @@ func (m *Model) View() string {
 // handleTabKey 处理 Tab 切换键
 // 返回 true 表示已处理，false 表示继续传递
 func (m *Model) handleTabKey(msg tea.KeyMsg) bool {
+	// 计算子模型可用的实际高度
+	availableHeight := m.height - 4
+	if availableHeight < 10 {
+		availableHeight = 10
+	}
+
 	switch msg.String() {
 	case "right", "l":
 		m.activeTab = nextTab(m.activeTab, 1)
 		// 发送窗口大小给新的活动子模型，确保它能正确渲染
-		child, _ := m.activeModel().Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		child, _ := m.activeModel().Update(tea.WindowSizeMsg{Width: m.width, Height: availableHeight})
 		m.updateChildModelFromSwitch(child)
 		return true
 	case "left", "h":
 		m.activeTab = nextTab(m.activeTab, -1)
 		// 发送窗口大小给新的活动子模型
-		child, _ := m.activeModel().Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		child, _ := m.activeModel().Update(tea.WindowSizeMsg{Width: m.width, Height: availableHeight})
 		m.updateChildModelFromSwitch(child)
 		return true
 	}

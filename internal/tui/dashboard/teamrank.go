@@ -158,6 +158,32 @@ func (m *teamRankModel) View() string {
 		maxRankLines = 5
 	}
 
+	// 计算可视窗口：根据 selectedIndex 确定显示的数据范围
+	// 确保选中的项始终在可视区域内
+	totalRanks := len(m.data.Ranks)
+	viewStart := 0
+	viewEnd := maxRankLines
+	if totalRanks > maxRankLines {
+		// 如果选中项在当前可视区域下方，调整视图使选中项进入可视区域
+		if m.selectedIndex >= viewEnd {
+			viewStart = m.selectedIndex - maxRankLines + 1
+			viewEnd = m.selectedIndex + 1
+		}
+		// 如果选中项在可视区域上方
+		if m.selectedIndex < viewStart {
+			viewStart = m.selectedIndex
+			viewEnd = m.selectedIndex + maxRankLines
+		}
+		// 确保不越界
+		if viewEnd > totalRanks {
+			viewEnd = totalRanks
+			viewStart = viewEnd - maxRankLines
+			if viewStart < 0 {
+				viewStart = 0
+			}
+		}
+	}
+
 	// 渲染表格
 	// 计算列宽
 	rankWidth := 5
@@ -189,17 +215,11 @@ func (m *teamRankModel) View() string {
 	sb.WriteString(mutedStyle.Render(" " + strings.Repeat("─", 70)))
 	sb.WriteString("\n")
 
-	// 限制渲染的排名行数
-	renderCount := len(m.data.Ranks)
-	if renderCount > maxRankLines {
-		renderCount = maxRankLines
-	}
-
-	// 渲染排名
+	// 渲染排名（使用 viewStart 和 viewEnd 控制渲染范围）
 	cyanStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("51")).Bold(true)
 	// 选中行样式（与 logs tab 对齐）
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("86"))
-	for i := 0; i < renderCount; i++ {
+	for i := viewStart; i < viewEnd; i++ {
 		r := m.data.Ranks[i]
 		email := r.Email
 		if runewidth.StringWidth(email) > emailWidth {
@@ -216,7 +236,7 @@ func (m *teamRankModel) View() string {
 		spendPadded := padLeft(fmt.Sprintf("$%.2f", r.Spend), spendWidth)
 		percentPadded := padLeft(fmt.Sprintf("%.1f%%", r.Percent), percentWidth)
 
-		// 选中行样式
+		// 选中行样式（使用绝对索引 i 比较）
 		lineStyle := greenStyle
 		if r.IsMe {
 			lineStyle = cyanStyle
@@ -231,9 +251,15 @@ func (m *teamRankModel) View() string {
 		sb.WriteString("\n")
 	}
 
-	// 如果有更多数据未显示
-	if len(m.data.Ranks) > maxRankLines {
-		sb.WriteString(mutedStyle.Render(fmt.Sprintf("  ... 还有 %d 名用户未显示", len(m.data.Ranks)-maxRankLines)))
+	// 如果有更多数据未显示，显示滚动提示
+	if totalRanks > maxRankLines {
+		// 计算当前视图显示的数据范围
+		visibleStart := viewStart + 1
+		visibleEnd := viewEnd
+		if visibleEnd > totalRanks {
+			visibleEnd = totalRanks
+		}
+		sb.WriteString(mutedStyle.Render(fmt.Sprintf("  ▼ 第 %d-%d / %d 名 ▼", visibleStart, visibleEnd, totalRanks)))
 		sb.WriteString("\n")
 	}
 
