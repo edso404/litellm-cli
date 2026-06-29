@@ -14,10 +14,10 @@ import (
 )
 
 var (
-	period   string
-	by       string
-	fromDate string
-	toDate   string
+	period       string
+	by           string
+	fromDate     string
+	toDate       string
 	jsonOutStats bool
 )
 

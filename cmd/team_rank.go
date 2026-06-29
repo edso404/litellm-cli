@@ -139,8 +139,8 @@ func outputTeamRankJSON(team *api.UserTeam, currentUserID string) {
 		TeamID      string     `json:"team_id"`
 		TeamAlias   string     `json:"team_alias"`
 		TotalSpend  float64    `json:"total_spend"`
-		CurrentRank *userRank   `json:"current_user_rank,omitempty"`
-		Ranks       []userRank  `json:"ranks"`
+		CurrentRank *userRank  `json:"current_user_rank,omitempty"`
+		Ranks       []userRank `json:"ranks"`
 	}
 	var currentRank *userRank
 	for i := range ranks {

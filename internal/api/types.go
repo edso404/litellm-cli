@@ -13,9 +13,9 @@ import (
 )
 
 type Client struct {
-	resty     *resty.Client
-	config    *config.Config
-	jwtToken  string
+	resty    *resty.Client
+	config   *config.Config
+	jwtToken string
 }
 
 type ClientOption func(*Client)
@@ -105,29 +105,29 @@ func (c *Client) parseError(body []byte) error {
 
 // UserDailyActivityResponse represents /user/daily/activity response
 type UserDailyActivityResponse struct {
-	Results   []UserDailyActivity `json:"results"`
-	Metadata  Metadata            `json:"metadata"`
+	Results  []UserDailyActivity `json:"results"`
+	Metadata Metadata            `json:"metadata"`
 }
 
 type UserDailyActivity struct {
-	Date     string         `json:"date"`
-	Metrics  ActivityMetrics `json:"metrics"`
-	Breakdown Breakdown    `json:"breakdown"`
+	Date      string          `json:"date"`
+	Metrics   ActivityMetrics `json:"metrics"`
+	Breakdown Breakdown       `json:"breakdown"`
 }
 
 type ActivityMetrics struct {
-	Spend                 float64 `json:"spend"`
-	PromptTokens          int64   `json:"prompt_tokens"`
-	CompletionTokens      int64   `json:"completion_tokens"`
-	TotalTokens           int64   `json:"total_tokens"`
-	SuccessfulRequests    int64   `json:"successful_requests"`
-	FailedRequests       int64   `json:"failed_requests"`
-	APIRequests          int64   `json:"api_requests"`
+	Spend              float64 `json:"spend"`
+	PromptTokens       int64   `json:"prompt_tokens"`
+	CompletionTokens   int64   `json:"completion_tokens"`
+	TotalTokens        int64   `json:"total_tokens"`
+	SuccessfulRequests int64   `json:"successful_requests"`
+	FailedRequests     int64   `json:"failed_requests"`
+	APIRequests        int64   `json:"api_requests"`
 }
 
 type Breakdown struct {
-	Models map[string]ModelBreakdown `json:"models"`
-	APIKeys map[string]APIKeyMetrics `json:"api_keys"`
+	Models  map[string]ModelBreakdown `json:"models"`
+	APIKeys map[string]APIKeyMetrics  `json:"api_keys"`
 }
 
 type ModelBreakdown struct {
@@ -135,7 +135,7 @@ type ModelBreakdown struct {
 }
 
 type APIKeyMetrics struct {
-	Metrics  ActivityMetrics `json:"metrics"`
+	Metrics  ActivityMetrics   `json:"metrics"`
 	Metadata map[string]string `json:"metadata"`
 }
 
@@ -160,9 +160,9 @@ type TeamDailyActivityResponse struct {
 }
 
 type TeamDailyActivity struct {
-	Date     string         `json:"date"`
-	Metrics  ActivityMetrics `json:"metrics"`
-	Breakdown Breakdown    `json:"breakdown"`
+	Date      string          `json:"date"`
+	Metrics   ActivityMetrics `json:"metrics"`
+	Breakdown Breakdown       `json:"breakdown"`
 }
 
 // GetTeamDailyActivity 获取团队每日活动
@@ -184,11 +184,11 @@ func (c *Client) GetSpendLogs(startDate, endDate string) (*SpendLogsResponse, er
 
 // SpendLogsUIResponse represents /spend/logs/ui response - 更详细的实时日志
 type SpendLogsUIResponse struct {
-	Data     []SpendLogEntry `json:"data"`
-	Total    int64           `json:"total"`
-	Page     int             `json:"page"`
-	PageSize int             `json:"page_size"`
-	TotalPages int           `json:"total_pages"`
+	Data       []SpendLogEntry `json:"data"`
+	Total      int64           `json:"total"`
+	Page       int             `json:"page"`
+	PageSize   int             `json:"page_size"`
+	TotalPages int             `json:"total_pages"`
 }
 
 type SpendLogEntry struct {
@@ -236,9 +236,9 @@ type ModelsResponse struct {
 }
 
 type ModelInfo struct {
-	Object      string `json:"object"`
-	ID          string `json:"id"`
-	ModelName   string `json:"model_name,omitempty"`
+	Object    string `json:"object"`
+	ID        string `json:"id"`
+	ModelName string `json:"model_name,omitempty"`
 }
 
 // GetModels 获取模型列表
@@ -255,14 +255,14 @@ type KeyInfoResponse struct {
 }
 
 type KeyDetail struct {
-	KeyName      string             `json:"key_name"`
-	KeyAlias     string             `json:"key_alias"`
-	Spend        float64            `json:"spend"`
-	Models       []string           `json:"models"`
-	UserID       string             `json:"user_id"`
-	TeamID       string             `json:"team_id"`
-	CreatedAt    string             `json:"created_at"`
-	LastActive   string             `json:"last_active"`
+	KeyName    string   `json:"key_name"`
+	KeyAlias   string   `json:"key_alias"`
+	Spend      float64  `json:"spend"`
+	Models     []string `json:"models"`
+	UserID     string   `json:"user_id"`
+	TeamID     string   `json:"team_id"`
+	CreatedAt  string   `json:"created_at"`
+	LastActive string   `json:"last_active"`
 }
 
 // GetKeyInfo 获取 Key 详情
@@ -283,11 +283,11 @@ type UserInfoResponse struct {
 
 // UserTeam represents a team in user's teams list
 type UserTeam struct {
-	TeamID           string        `json:"team_id"`
-	TeamAlias        string        `json:"team_alias"`
-	Spend            float64       `json:"spend"`
+	TeamID           string       `json:"team_id"`
+	TeamAlias        string       `json:"team_alias"`
+	Spend            float64      `json:"spend"`
 	MembersWithRoles []MemberInfo `json:"members_with_roles"`
-	Keys             []KeySpend    `json:"keys"`
+	Keys             []KeySpend   `json:"keys"`
 }
 
 // GetUserInfo 获取用户信息
@@ -301,24 +301,24 @@ func (c *Client) GetUserInfo() (*UserInfoResponse, error) {
 type TeamListResponse []TeamInfo
 
 type TeamInfo struct {
-	TeamAlias         string       `json:"team_alias"`
-	TeamID            string       `json:"team_id"`
-	Spend             float64      `json:"spend"`
-	MembersWithRoles  []MemberInfo `json:"members_with_roles"`
-	Keys              []KeySpend    `json:"keys"`
+	TeamAlias        string       `json:"team_alias"`
+	TeamID           string       `json:"team_id"`
+	Spend            float64      `json:"spend"`
+	MembersWithRoles []MemberInfo `json:"members_with_roles"`
+	Keys             []KeySpend   `json:"keys"`
 }
 
 type MemberInfo struct {
-	UserID  string `json:"user_id"`
-	Email   string `json:"user_email"`
-	Role    string `json:"role"`
+	UserID string `json:"user_id"`
+	Email  string `json:"user_email"`
+	Role   string `json:"role"`
 }
 
 type KeySpend struct {
-	KeyName string  `json:"key_name"`
-	KeyAlias string `json:"key_alias"`
-	UserID  string  `json:"user_id"`
-	Spend   float64 `json:"spend"`
+	KeyName  string  `json:"key_name"`
+	KeyAlias string  `json:"key_alias"`
+	UserID   string  `json:"user_id"`
+	Spend    float64 `json:"spend"`
 }
 
 // GetTeamList 获取团队列表（含用量）

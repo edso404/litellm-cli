@@ -60,6 +60,7 @@ type Model struct {
 	detailState      *detailViewState // 详情视图状态（展开/折叠）
 	showHeader       bool             // 是否显示顶部 header（在 dashboard 中隐藏）
 	showFooter       bool             // 是否显示底部 help footer（在 dashboard 中隐藏，由父容器统一渲染）
+	debug            bool             // 是否启用调试日志
 }
 
 // NewModel 构造工厂函数
@@ -71,12 +72,12 @@ func NewModel(client LogsClient, interval int, modelFilter string) *Model {
 		data:          "加载中...",
 		seenLogIDs:    make(map[string]bool),
 		newLogIDs:     make(map[string]bool),
-		width:         120,    // 默认宽度
-		height:        40,     // 默认高度
+		width:         DefaultWidth,
+		height:        DefaultHeight,
 		viewMode:      "list", // 默认视图模式
 		selectedIndex: 0,
-		showHeader:    true,   // 默认显示 header
-		showFooter:    true,   // 默认显示 footer
+		showHeader:    true, // 默认显示 header
+		showFooter:    true, // 默认显示 footer
 	}
 	return m
 }
@@ -190,16 +191,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.detailState.currentItemIndex = m.detailState.selectedItem
 						m.detailState.markdownScrollOffset = 0
 					} else {
-							if len(m.detailState.blocks) > 0 && m.detailState.focusedBlock < len(m.detailState.blocks) {
-								currentBlock := m.detailState.blocks[m.detailState.focusedBlock]
-								if collapsed, exists := m.detailState.blockCollapsed[currentBlock]; exists {
-									m.detailState.blockCollapsed[currentBlock] = !collapsed
-								} else {
-									// 第一次按 Enter：默认展开显示
-									m.detailState.blockCollapsed[currentBlock] = false
-								}
+						if len(m.detailState.blocks) > 0 && m.detailState.focusedBlock < len(m.detailState.blocks) {
+							currentBlock := m.detailState.blocks[m.detailState.focusedBlock]
+							if collapsed, exists := m.detailState.blockCollapsed[currentBlock]; exists {
+								m.detailState.blockCollapsed[currentBlock] = !collapsed
+							} else {
+								// 第一次按 Enter：默认展开显示
+								m.detailState.blockCollapsed[currentBlock] = false
 							}
 						}
+					}
 				}
 			}
 			return m, nil
@@ -285,9 +286,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.viewMode == "list" {
 				// 计算可见行数
-				availableRows := 50
+				availableRows := DetailDefaultRows
 				if m.height > 10 {
-					availableRows = m.height - 10
+					availableRows = m.height - DetailMinRows
 				}
 				visibleRows := availableRows - 2
 				if visibleRows < 1 {
@@ -333,9 +334,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else if m.viewMode == "list" {
-				availableRows := 50
+				availableRows := DetailDefaultRows
 				if m.height > 10 {
-					availableRows = m.height - 10
+					availableRows = m.height - DetailMinRows
 				}
 				visibleRows := availableRows - 2
 				if visibleRows < 1 {
@@ -369,9 +370,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				// 计算可见行数
-				availableRows := 50
+				availableRows := DetailDefaultRows
 				if m.height > 10 {
-					availableRows = m.height - 10
+					availableRows = m.height - DetailMinRows
 				}
 				visibleRows := availableRows - 2 // 减去提示行
 				if visibleRows < 1 {
@@ -431,9 +432,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if m.logDataOld != nil && len(*m.logDataOld) > 0 {
 					maxIdx = len(*m.logDataOld) - 1
 				}
-				availableRows := 50
+				availableRows := DetailDefaultRows
 				if m.height > 10 {
-					availableRows = m.height - 10
+					availableRows = m.height - DetailMinRows
 				}
 				visibleRows := availableRows - 2
 				if visibleRows < 1 {
@@ -449,12 +450,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "pgup", "\x1b[5~":
 			if m.viewMode == "detail" {
-				m.detailScroll = max(0, m.detailScroll-20)
+				m.detailScroll = max(0, m.detailScroll-ScrollStep)
 			}
 			return m, nil
 		case "pgdown", "\x1b[6~":
 			if m.viewMode == "detail" {
-				m.detailScroll += 20
+				m.detailScroll += ScrollStep
 			}
 			return m, nil
 		case " ":
@@ -1547,7 +1548,6 @@ func (m *Model) renderArrayDetailView(proxyReq, respData map[string]interface{},
 	var lines []string
 
 	tab := m.detailState.activeTab
-	_ = m.getTabItemCount(tab)
 	selectedIdx := m.detailState.selectedItem
 
 	if selectedIdx < 0 {
@@ -3260,9 +3260,9 @@ func (m *Model) renderMetadataContent() string {
 func (m *Model) renderListView() string {
 	var content strings.Builder
 
-	availableRows := 50
+	availableRows := DetailDefaultRows
 	if m.height > 10 {
-		availableRows = m.height - 10
+		availableRows = m.height - DetailMinRows
 	}
 	visibleRows := availableRows - 2
 	if visibleRows < 1 {
@@ -3377,13 +3377,19 @@ func (m *Model) loadDetail() tea.Cmd {
 	m.detailError = "加载中..."
 
 	return func() tea.Msg {
-		log.Printf("[loadDetail] 开始加载详情, requestID=%s", requestID)
+		if m.debug {
+			log.Printf("[loadDetail] 开始加载详情, requestID=%s", requestID)
+		}
 		detail, err := m.client.GetSpendLogDetail(requestID)
 		if err != nil {
-			log.Printf("[loadDetail] 请求失败: %v", err)
+			if m.debug {
+				log.Printf("[loadDetail] 请求失败: %v", err)
+			}
 			return DetailLoadedMsg{Error: fmt.Sprintf("请求失败: %v", err)}
 		}
-		log.Printf("[loadDetail] 请求完成, requestID=%s, keys=%v", requestID, getMapKeys(detail))
+		if m.debug {
+			log.Printf("[loadDetail] 请求完成, requestID=%s, keys=%v", requestID, getMapKeys(detail))
+		}
 		if detail == nil {
 			return DetailLoadedMsg{Error: "API 返回空数据，请确认日志详情接口是否可用"}
 		}
@@ -3900,6 +3906,11 @@ func (m *Model) ShowFooter(show bool) {
 	m.showFooter = show
 }
 
+// SetDebug 设置调试日志模式
+func (m *Model) SetDebug(enabled bool) {
+	m.debug = enabled
+}
+
 // HelpText 返回当前视图状态对应的帮助文本（供父容器统一渲染 footer 时使用）
 func (m *Model) HelpText() string {
 	if m.viewMode == "detail" && m.detailState != nil {
@@ -3917,3 +3928,12 @@ func (m *Model) HelpText() string {
 	// 列表视图
 	return "↑↓: 切换 | enter: 详情 | c: 复制 | esc: 返回 | ←/→: 切换 tab | q: 退出"
 }
+
+// UI 常量
+const (
+	DefaultWidth      = 120 // 默认终端宽度
+	DefaultHeight     = 40  // 默认终端高度
+	ScrollStep        = 20  // 滚动步长
+	DetailMinRows     = 10  // 详情视图最小行数
+	DetailDefaultRows = 50  // 详情视图默认行数
+)

@@ -14,7 +14,7 @@ func EnsureColorProfile() {
 var (
 	// Theme colors
 	HeaderBgColor = lipgloss.Color("236")
-	HeaderFgColor = lipgloss.Color("86") // Cyan/Teal
+	HeaderFgColor = lipgloss.Color("86")  // Cyan/Teal
 	MutedColor    = lipgloss.Color("240") // Dark gray for help text
 
 	// Highlight & Status colors

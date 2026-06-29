@@ -14,6 +14,11 @@ import (
 	"litellm-cli/internal/config"
 )
 
+const (
+	// apiKeyMaxDisplayLen API Key 最大显示长度
+	apiKeyMaxDisplayLen = 20
+)
+
 var (
 	loginUser     string
 	loginPassword string
@@ -71,21 +76,14 @@ func runLogin(cmd *cobra.Command, args []string) {
 	// 检查是否有重定向 URL，其中包含 token
 	redirectURL, ok := result["redirect_url"].(string)
 	if !ok || redirectURL == "" {
-		fmt.Printf("响应: %s\n", string(body))
+		printResponse(body)
 		log.Fatal("未找到 redirect_url")
 	}
 
 	// 从 redirect_url 中提取 token
-	token := ""
-	if strings.Contains(redirectURL, "token=") {
-		u, err := url.Parse(redirectURL)
-		if err == nil {
-			token = u.Query().Get("token")
-		}
-	}
-
+	token := extractTokenFromURL(redirectURL)
 	if token == "" {
-		fmt.Printf("响应: %s\n", string(body))
+		printResponse(body)
 		log.Fatal("未找到 token")
 	}
 
@@ -98,11 +96,33 @@ func runLogin(cmd *cobra.Command, args []string) {
 	// 保存到缓存
 	config.SaveTokenCache(loginUser, key, token, userID)
 
+	displayKey := key
+	if len(key) > apiKeyMaxDisplayLen {
+		displayKey = key[:apiKeyMaxDisplayLen] + "..."
+	}
+
 	fmt.Println("✅ 登录成功!")
 	fmt.Printf("   用户: %s\n", loginUser)
-	fmt.Printf("   API Key: %s\n", key[:min(20, len(key))]+"...")
+	fmt.Printf("   API Key: %s\n", displayKey)
 	fmt.Printf("   JWT Token: 已保存\n")
 	fmt.Printf("   User ID: %s\n", userID)
+}
+
+// extractTokenFromURL 从重定向 URL 中提取 token
+func extractTokenFromURL(redirectURL string) string {
+	if !strings.Contains(redirectURL, "token=") {
+		return ""
+	}
+	u, err := url.Parse(redirectURL)
+	if err != nil {
+		return ""
+	}
+	return u.Query().Get("token")
+}
+
+// printResponse 打印原始响应（用于调试）
+func printResponse(body []byte) {
+	fmt.Printf("响应: %s\n", string(body))
 }
 
 // extractKeyFromJWT 从 JWT token 中提取 key 和 user_id
@@ -138,11 +158,4 @@ func extractKeyFromJWT(tokenString string) (string, string, error) {
 	userID, _ := claims["user_id"].(string)
 
 	return key, userID, nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

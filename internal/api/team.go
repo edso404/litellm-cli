@@ -22,16 +22,16 @@ func (c *Client) GetTeamAvailable() (*TeamAvailableResponse, error) {
 
 // TeamInfoResponse represents /team/info response
 type TeamInfoResponse struct {
-	TeamID     string         `json:"team_id"`
-	TeamInfo   TeamDetail     `json:"team_info"`
-	Keys       []KeySpend     `json:"keys"`
+	TeamID   string     `json:"team_id"`
+	TeamInfo TeamDetail `json:"team_info"`
+	Keys     []KeySpend `json:"keys"`
 }
 
 type TeamDetail struct {
-	TeamAlias       string        `json:"team_alias,omitempty"`
-	TeamID          string        `json:"team_id"`
+	TeamAlias        string       `json:"team_alias,omitempty"`
+	TeamID           string       `json:"team_id"`
 	MembersWithRoles []MemberInfo `json:"members_with_roles"`
-	Spend           float64       `json:"spend"`
+	Spend            float64      `json:"spend"`
 }
 
 // GetTeamInfo 获取团队详情（包含成员用量）

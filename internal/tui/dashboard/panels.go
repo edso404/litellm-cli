@@ -41,7 +41,7 @@ func (a *teamRankClientAdapter) GetUserInfo() (*UserInfo, error) {
 			TeamID:    t.TeamID,
 			TeamAlias: t.TeamAlias,
 			Members:   members,
-			Keys:       keys,
+			Keys:      keys,
 		}
 	}
 
@@ -69,14 +69,14 @@ type TabPanelModel interface {
 
 // modelsTabModel 是 models 面板的 Model
 type modelsTabModel struct {
-	client     *api.Client
-	data       *api.ModelsResponse
-	loading    bool
-	err        string
-	width      int
-	height     int
-	quitting   bool
-	selected   int
+	client   *api.Client
+	data     *api.ModelsResponse
+	loading  bool
+	err      string
+	width    int
+	height   int
+	quitting bool
+	selected int
 }
 
 func newModelsTabModel(client *api.Client) *modelsTabModel {
@@ -283,13 +283,13 @@ type teamsLoadedMsg struct {
 
 // keyinfoTabModel 是 keyinfo 面板的 Model
 type keyinfoTabModel struct {
-	client  *api.Client
-	apiKey  string
-	data    *api.KeyInfoResponse
-	loading bool
-	err     string
-	width   int
-	height  int
+	client   *api.Client
+	apiKey   string
+	data     *api.KeyInfoResponse
+	loading  bool
+	err      string
+	width    int
+	height   int
 	quitting bool
 }
 

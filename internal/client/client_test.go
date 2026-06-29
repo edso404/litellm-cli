@@ -30,7 +30,7 @@ func TestNew(t *testing.T) {
 
 func TestGetAPIKey(t *testing.T) {
 	cfg := &config.Config{
-		APIKey: "client-test-key",
+		APIKey:  "client-test-key",
 		BaseURL: "https://test.example.com",
 	}
 

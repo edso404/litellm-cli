@@ -16,12 +16,12 @@ import (
 type TimeRangePreset string
 
 const (
-	TimeRangeWeek      TimeRangePreset = "week"      // 最近一周
-	TimeRangeMonth     TimeRangePreset = "month"     // 最近一个月
-	TimeRange3Months   TimeRangePreset = "3months"   // 最近3个月
-	TimeRangeHalfYear  TimeRangePreset = "halfyear"  // 最近半年
-	TimeRangeYear      TimeRangePreset = "year"      // 今年
-	TimeRangeCustom    TimeRangePreset = "custom"    // 自定义
+	TimeRangeWeek     TimeRangePreset = "week"     // 最近一周
+	TimeRangeMonth    TimeRangePreset = "month"    // 最近一个月
+	TimeRange3Months  TimeRangePreset = "3months"  // 最近3个月
+	TimeRangeHalfYear TimeRangePreset = "halfyear" // 最近半年
+	TimeRangeYear     TimeRangePreset = "year"     // 今年
+	TimeRangeCustom   TimeRangePreset = "custom"   // 自定义
 )
 
 // StatsClient defines the client interface required by the stats TUI
@@ -586,13 +586,13 @@ func (m *Model) aggregateByWeek() []api.UserDailyActivity {
 			weeklyData[weekKey] = api.UserDailyActivity{
 				Date: weekKey,
 				Metrics: api.ActivityMetrics{
-					Spend:               d.Metrics.Spend,
-					APIRequests:         d.Metrics.APIRequests,
-					SuccessfulRequests:  d.Metrics.SuccessfulRequests,
-					FailedRequests:       d.Metrics.FailedRequests,
-					PromptTokens:        d.Metrics.PromptTokens,
-					CompletionTokens:     d.Metrics.CompletionTokens,
-					TotalTokens:          d.Metrics.TotalTokens,
+					Spend:              d.Metrics.Spend,
+					APIRequests:        d.Metrics.APIRequests,
+					SuccessfulRequests: d.Metrics.SuccessfulRequests,
+					FailedRequests:     d.Metrics.FailedRequests,
+					PromptTokens:       d.Metrics.PromptTokens,
+					CompletionTokens:   d.Metrics.CompletionTokens,
+					TotalTokens:        d.Metrics.TotalTokens,
 				},
 			}
 		}
@@ -640,13 +640,13 @@ func (m *Model) aggregateByMonth() []api.UserDailyActivity {
 			monthlyData[monthKey] = api.UserDailyActivity{
 				Date: monthKey,
 				Metrics: api.ActivityMetrics{
-					Spend:               d.Metrics.Spend,
-					APIRequests:         d.Metrics.APIRequests,
-					SuccessfulRequests:  d.Metrics.SuccessfulRequests,
-					FailedRequests:       d.Metrics.FailedRequests,
-					PromptTokens:        d.Metrics.PromptTokens,
-					CompletionTokens:     d.Metrics.CompletionTokens,
-					TotalTokens:          d.Metrics.TotalTokens,
+					Spend:              d.Metrics.Spend,
+					APIRequests:        d.Metrics.APIRequests,
+					SuccessfulRequests: d.Metrics.SuccessfulRequests,
+					FailedRequests:     d.Metrics.FailedRequests,
+					PromptTokens:       d.Metrics.PromptTokens,
+					CompletionTokens:   d.Metrics.CompletionTokens,
+					TotalTokens:        d.Metrics.TotalTokens,
 				},
 			}
 		}
@@ -746,7 +746,7 @@ func (m *Model) switchTimeRange(preset TimeRangePreset) tea.Cmd {
 	m.timeRangePreset = preset
 	m.startDate, m.endDate = getTimeRangeDates(preset)
 	m.loading = true
-	m.data = nil          // 清空数据，确保刷新
+	m.data = nil // 清空数据，确保刷新
 	m.selectedBarIndex = -1
 
 	// 同时更新粒度

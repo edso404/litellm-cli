@@ -63,8 +63,10 @@ func runLogs(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	logsModel := logs.NewModel(c, interval, model)
+	logsModel.SetDebug(verbose)
 	p := tea.NewProgram(
-		logs.NewModel(c, interval, model),
+		logsModel,
 		tea.WithAltScreen(),
 	)
 

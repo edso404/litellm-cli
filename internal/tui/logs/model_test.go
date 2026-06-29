@@ -149,7 +149,7 @@ func TestLogsTUI_HappyPath(t *testing.T) {
 
 	// 1. 初始化 Model 并设置固定窗口大小以防止漂移
 	m := NewModel(c, 5, "")
-	
+
 	// 投递窗口大小消息，锁死长宽
 	newModel, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = newModel.(*Model)
@@ -230,7 +230,7 @@ func TestLogsTUI_HappyPath(t *testing.T) {
 	testutils.AssertTUISnapshot(t, "logs_choice_detail_view", normalizeOutput(m.View()))
 
 	// == 额外测试：响应式折叠/展开/聚焦切换/复制交互状态机 ==
-	
+
 	// 1. 模拟按 Enter 键展开当前聚焦的 thinking 块
 	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = newModel.(*Model)
