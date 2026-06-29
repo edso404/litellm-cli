@@ -1122,15 +1122,14 @@ func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedS
 		return lines
 	}
 	role, _ := lastMsg["role"].(string)
-	content := extractMessageContentFull(lastMsg)
-	if content == "" {
-		return lines
-	}
 
-	content = strings.TrimSpace(content)
+	// 智能检测 content 类型
+	contentType := detectMessageContentType(lastMsg)
 
-	// 用实际可用列宽（减去缩进）做 word-wrap，避免在双列布局中撑破左列
-	wrapWidth := availWidth - 6 // 6 = 4 空格缩进 + 2 余量
+	// 根据 content 类型选择合适的渲染方式
+	const maxMsgLines = 3
+	var flatLines []string
+	wrapWidth := availWidth - 6
 	if wrapWidth < 30 {
 		wrapWidth = 30
 	}
@@ -1138,13 +1137,13 @@ func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedS
 		wrapWidth = 120
 	}
 
-	// tool role 消息内容通常是大 JSON，不需要 markdown 渲染，直接截取原始文本前几行
-	const maxMsgLines = 3
-	var flatLines []string
-	if role == "tool" {
+	switch contentType {
+	case "tool_result", "json":
+		// tool_result 或 JSON 内容不应该用 markdown 渲染，直接展示原始文本
+		content := extractMessageContentFull(lastMsg)
+		content = strings.TrimSpace(content)
 		rawLines := strings.Split(content, "\n")
 		for _, l := range rawLines {
-			// 按 wrapWidth 手动截断超长行
 			l = strings.TrimRight(l, " \t")
 			if len([]rune(l)) > wrapWidth {
 				l = string([]rune(l)[:wrapWidth-1]) + "…"
@@ -1153,14 +1152,30 @@ func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedS
 				flatLines = append(flatLines, l)
 			}
 		}
-	} else {
+	case "tool_use_with_text":
+		// 同时存在 text 和 tool_use 的混合内容
+		content := extractMessageContentFull(lastMsg)
+		content = strings.TrimSpace(content)
 		rendered := m.renderMarkdownWithWidth(content, wrapWidth)
-		// wrapText 返回的是含 \n 的单个字符串，必须展开成真实行后再截断
 		for _, r := range rendered {
 			for _, l := range strings.Split(r, "\n") {
 				flatLines = append(flatLines, l)
 			}
 		}
+	default:
+		// 普通文本内容，使用 markdown 渲染
+		content := extractMessageContentFull(lastMsg)
+		content = strings.TrimSpace(content)
+		rendered := m.renderMarkdownWithWidth(content, wrapWidth)
+		for _, r := range rendered {
+			for _, l := range strings.Split(r, "\n") {
+				flatLines = append(flatLines, l)
+			}
+		}
+	}
+
+	if len(flatLines) == 0 {
+		return lines
 	}
 
 	lines = append(lines, "")
@@ -1177,6 +1192,78 @@ func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedS
 		lines = append(lines, mutedStyle.Render("    ... [长消息已折叠，按 Enter/Tab 切换 messages 查看完整对话] ..."))
 	}
 	return lines
+}
+
+// detectMessageContentType 检测消息 content 的类型
+// 返回值：text（普通文本）、tool_result（工具结果）、tool_use_with_text（混合内容）、json（纯 JSON）
+func detectMessageContentType(msg map[string]interface{}) string {
+	contentRaw := msg["content"]
+	if contentRaw == nil {
+		return "text"
+	}
+
+	// content 是字符串
+	if s, ok := contentRaw.(string); ok {
+		if strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[") {
+			// 尝试解析为 JSON
+			var jsonDoc interface{}
+			if err := json.Unmarshal([]byte(s), &jsonDoc); err == nil {
+				return "json"
+			}
+		}
+		return "text"
+	}
+
+	// content 是数组
+	if list, ok := contentRaw.([]interface{}); ok {
+		hasToolResult := false
+		hasToolUse := false
+		hasText := false
+
+		for _, item := range list {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				itemType, _ := itemMap["type"].(string)
+				switch itemType {
+				case "tool_result":
+					hasToolResult = true
+				case "tool_use", "tool_call":
+					hasToolUse = true
+				case "text":
+					hasText = true
+				default:
+					// 检查是否有 text 字段
+					if _, ok := itemMap["text"].(string); ok {
+						hasText = true
+					}
+				}
+			}
+		}
+
+		if hasToolResult {
+			return "tool_result"
+		}
+		if hasToolUse && hasText {
+			return "tool_use_with_text"
+		}
+		return "text"
+	}
+
+	// content 是单个对象
+	if cMap, ok := contentRaw.(map[string]interface{}); ok {
+		itemType, _ := cMap["type"].(string)
+		if itemType == "tool_result" {
+			return "tool_result"
+		}
+		// 检查是否是纯 JSON
+		if _, hasText := cMap["text"].(string); !hasText {
+			// 没有 text 字段，可能是纯 JSON
+			if _, err := json.MarshalIndent(cMap, "", "  "); err == nil {
+				return "json"
+			}
+		}
+	}
+
+	return "text"
 }
 
 func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardStyle, focusedCardStyle, contentStyle, mutedStyle, groupStyle, valueStyle, keyStyle, infoStyle, successStyle lipgloss.Style) []string {
@@ -1716,6 +1803,26 @@ func extractMessageContentFull(msg interface{}) string {
 						inputStr = args
 					}
 					parts = append(parts, fmt.Sprintf("\n\n🔧 **[Tool Use: %s (ID: %s)]**\n`input: %s`\n\n", toolName, toolID, inputStr))
+				} else if itemType == "tool_result" {
+					// tool_result 类型不应使用 markdown 渲染，应作为代码块显示
+					var resultContent string
+					if content, ok := itemMap["content"].(string); ok {
+						resultContent = content
+					} else if content, ok := itemMap["content"].(map[string]interface{}); ok {
+						// 尝试解析为 JSON
+						if bytes, err := json.MarshalIndent(content, "", "  "); err == nil {
+							resultContent = string(bytes)
+						} else {
+							resultContent = fmt.Sprintf("%v", content)
+						}
+					}
+					// 尝试获取 tool_use_id
+					toolUseID, _ := itemMap["tool_use_id"].(string)
+					if toolUseID != "" {
+						parts = append(parts, fmt.Sprintf("\n\n📥 **[Tool Result: %s]**\n```\n%s\n```\n\n", toolUseID, resultContent))
+					} else {
+						parts = append(parts, fmt.Sprintf("\n\n📥 **[Tool Result]**\n```\n%s\n```\n\n", resultContent))
+					}
 				} else if itemType == "image" {
 					parts = append(parts, "\n\n🖼️ **[Image Block]**\n\n")
 				} else {
