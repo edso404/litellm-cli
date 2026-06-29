@@ -272,17 +272,18 @@ func (m *Model) View() string {
 	}
 
 	// 计算可用高度，确保内容不会超出显示区域
-	// 固定行数：header(2) + 时间选择器(1) + 卡片(2) + 分隔线(1, 大屏) + footer(1, showHeader)
-	fixedLines := 2 + 1 + 2 + 1
+	// 固定行数：当 showHeader=true 时额外占用 header(2) 和 footer(1)
+	// 在 dashboard 中运行时：时间选择器(1) + 卡片(2) + 分隔线(1, 大屏) = 4-5 行
+	fixedLines := 1 + 2 + 1 // 时间选择器(1) + 卡片(2) + 分隔线(1)
 	if !isLargeScreen {
 		fixedLines--
 	}
 	if m.showHeader {
-		fixedLines++
+		fixedLines += 3 // header(2) + footer(1)
 	}
-	maxBarLines := m.height - fixedLines - 2 // 预留一些边距
-	if maxBarLines < 5 {
-		maxBarLines = 5
+	maxBarLines := m.height - fixedLines
+	if maxBarLines < 3 {
+		maxBarLines = 3
 	}
 
 	// 底部水平柱状图

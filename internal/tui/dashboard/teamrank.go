@@ -151,11 +151,12 @@ func (m *teamRankModel) View() string {
 	sb.WriteString("\n\n")
 
 	// 计算可用高度，确保内容不会超出显示区域
-	// 固定行数：总用量(1) + 空行(1) + 表头(2) + 我的排名(3) + 帮助(1) = 8
-	fixedLines := 8
-	maxRankLines := m.height - fixedLines - 2 // 预留边距
-	if maxRankLines < 5 {
-		maxRankLines = 5
+	// 固定行数：总用量+空行(2) + 表头+分隔线(3) + 滚动提示(1) + 我的排名(3) = 9
+	// 注意：这里不渲染 footer，由 dashboard 统一渲染
+	fixedLines := 9
+	maxRankLines := m.height - fixedLines
+	if maxRankLines < 3 {
+		maxRankLines = 3
 	}
 
 	// 计算可视窗口：根据 selectedIndex 确定显示的数据范围
@@ -271,9 +272,6 @@ func (m *teamRankModel) View() string {
 		sb.WriteString(cyanStyle.Render(fmt.Sprintf("    你的用量: $%.2f (占比 %.1f%%)", m.data.CurrentRank.Spend, m.data.CurrentRank.Percent)))
 		sb.WriteString("\n")
 	}
-
-	sb.WriteString("\n")
-	sb.WriteString(mutedStyle.Render("  ↑↓: 移动 | q: 退出"))
 
 	return sb.String()
 }

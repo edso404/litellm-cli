@@ -190,15 +190,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.detailState.currentItemIndex = m.detailState.selectedItem
 						m.detailState.markdownScrollOffset = 0
 					} else {
-						if len(m.detailState.blocks) > 0 && m.detailState.focusedBlock < len(m.detailState.blocks) {
-							currentBlock := m.detailState.blocks[m.detailState.focusedBlock]
-							if collapsed, exists := m.detailState.blockCollapsed[currentBlock]; exists {
-								m.detailState.blockCollapsed[currentBlock] = !collapsed
-							} else {
-								m.detailState.blockCollapsed[currentBlock] = false // 默认是折叠的(true)，第一次按 Enter 应该展开它
+							if len(m.detailState.blocks) > 0 && m.detailState.focusedBlock < len(m.detailState.blocks) {
+								currentBlock := m.detailState.blocks[m.detailState.focusedBlock]
+								if collapsed, exists := m.detailState.blockCollapsed[currentBlock]; exists {
+									m.detailState.blockCollapsed[currentBlock] = !collapsed
+								} else {
+									// 第一次按 Enter：默认展开显示
+									m.detailState.blockCollapsed[currentBlock] = false
+								}
 							}
 						}
-					}
 				}
 			}
 			return m, nil
