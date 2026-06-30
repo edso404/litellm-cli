@@ -3,7 +3,6 @@ package logs
 import (
 	"encoding/base64"
 	"encoding/json"
-	"time"
 	"fmt"
 	"log"
 	"net/url"
@@ -11,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -79,7 +79,7 @@ func NewModel(client LogsClient, interval int, modelFilter string) *Model {
 		showHelp:      false,
 		pollingPaused: false,
 		loadError:     "",
-		refreshing:   true,
+		refreshing:    true,
 		sortField:     "time",
 		sortAscending: false,
 		data:          "加载中...",
@@ -845,18 +845,24 @@ func (m *Model) renderDetailView() string {
 		metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 		iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86"))
 
-		var metaParts []string
-		metaParts = append(metaParts, iconStyle.Render("📦")+metaStyle.Render(" "+m.selectedEntry.Model))
-		if m.selectedEntry.TotalSpend > 0 {
-			metaParts = append(metaParts, iconStyle.Render("💰")+metaStyle.Render(fmt.Sprintf(" $%.4f", m.selectedEntry.TotalSpend)))
-		}
-		if m.selectedEntry.TotalTokens > 0 {
-			metaParts = append(metaParts, iconStyle.Render("📊")+metaStyle.Render(fmt.Sprintf(" %d", m.selectedEntry.TotalTokens)))
-		}
-		metaParts = append(metaParts, iconStyle.Render("⏱️")+metaStyle.Render(" "+m.selectedEntry.StartTime))
-		metaParts = append(metaParts, iconStyle.Render("🔖")+metaStyle.Render(" "+m.selectedEntry.ID))
+		// 第一行: 模型 + 时间
+		var row1 []string
+		row1 = append(row1, iconStyle.Render("📦")+metaStyle.Render(" "+m.selectedEntry.Model))
+		row1 = append(row1, iconStyle.Render("⏱️")+metaStyle.Render(" "+m.selectedEntry.StartTime))
+		lines = append(lines, lipgloss.JoinHorizontal(0, row1...))
 
-		lines = append(lines, lipgloss.JoinHorizontal(0, metaParts...))
+		// 第二行: tokens 详情 + 花费 + Request ID
+		var row2 []string
+		if m.selectedEntry.TotalTokens > 0 {
+			row2 = append(row2, iconStyle.Render("📊")+metaStyle.Render(fmt.Sprintf(" %d (📝%d + ✍️%d)", m.selectedEntry.TotalTokens, m.selectedEntry.PromptTokens, m.selectedEntry.CompletionTokens)))
+		}
+		if m.selectedEntry.TotalSpend > 0 {
+			row2 = append(row2, iconStyle.Render("💰")+metaStyle.Render(fmt.Sprintf(" $%.4f", m.selectedEntry.TotalSpend)))
+		}
+		row2 = append(row2, iconStyle.Render("🔖")+metaStyle.Render(" "+m.selectedEntry.ID))
+		if len(row2) > 0 {
+			lines = append(lines, lipgloss.JoinHorizontal(0, row2...))
+		}
 	}
 	lines = append(lines, "")
 
@@ -1075,7 +1081,7 @@ func (m *Model) applyMarkdownScrollUnified(allLines []string, availableLines int
 	return sb.String()
 }
 
-func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mutedStyle, valueStyle lipgloss.Style, maxAvailLines int) []string {
+func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mutedStyle, valueStyle lipgloss.Style, maxAvailLines int, maxWidth int) []string {
 	var lines []string
 	if singleChoice == nil {
 		return lines
@@ -1088,6 +1094,11 @@ func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mute
 	budget := maxAvailLines
 	if budget < 4 {
 		budget = 4
+	}
+	// 使用传入的 maxWidth 计算实际渲染行数，而不是全屏宽度
+	availWidth := maxWidth - 10
+	if availWidth < 30 {
+		availWidth = 30
 	}
 
 	// 1. 尝试获取 finish_reason
@@ -1105,7 +1116,7 @@ func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mute
 	if msg == nil {
 		if text, ok := singleChoice["text"].(string); ok && text != "" {
 			text = strings.TrimSpace(text)
-			rendered := m.renderMarkdownFull(text)
+			rendered := m.renderMarkdownWithWidth(text, m.width-10)
 			lines = append(lines, "  💬 内容:")
 			budget-- // 标题行
 			maxContent := budget
@@ -1134,36 +1145,39 @@ func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mute
 
 		if thinking != "" {
 			thinking = strings.TrimSpace(thinking)
-			renderedThinking := m.renderMarkdownFull(thinking)
-
-			// 思考最多占预算的一半（保留空间给正文），且不超过 6 行
-			maxThinkingLines := budget / 2
-			if maxThinkingLines < 2 {
-				maxThinkingLines = 2
-			}
-			if maxThinkingLines > 6 {
-				maxThinkingLines = 6
-			}
+			renderedThinking := m.renderMarkdownWithWidth(thinking, availWidth)
+			thinkingCount := len(renderedThinking)
 
 			lines = append(lines, mutedStyle.Render("  🧠 思考过程:"))
-			budget-- // 标题行
-			if len(renderedThinking) <= maxThinkingLines {
+			// 预留一行给标题，剩余空间自适应分配
+			budget--
+
+			// 自适应分配：如果思考内容很少，全部显示；否则限制行数
+			maxDisplay := budget / 3 // 思考最多占1/3预算，保留空间给内容
+			if maxDisplay < 1 {
+				maxDisplay = 1
+			}
+			if thinkingCount <= maxDisplay {
+				// 内容足够少，全部显示
 				for _, rl := range renderedThinking {
 					lines = append(lines, thinkingStyle.Render("    "+rl))
-					budget--
 				}
 			} else {
-				for i := 0; i < maxThinkingLines; i++ {
+				// 内容太多，限制显示并提示
+				for i := 0; i < maxDisplay; i++ {
 					lines = append(lines, thinkingStyle.Render("    "+renderedThinking[i]))
-					budget--
 				}
 				lines = append(lines, mutedStyle.Render("    ... [思考过程较长已折叠，按 Enter/Tab 切换 choices 查看完整思维链] ..."))
-				budget--
+			}
+			// 更新 budget 为剩余可用行数（用于后续内容）
+			budget = budget - maxDisplay
+			if budget < 0 {
+				budget = 0
 			}
 		}
 
 		if cleanText != "" {
-			rendered := m.renderMarkdownFull(cleanText)
+			rendered := m.renderMarkdownWithWidth(cleanText, availWidth)
 			lines = append(lines, "  💬 内容:")
 			budget-- // 标题行
 			maxContent := budget
@@ -1187,7 +1201,18 @@ func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mute
 	toolCalls, _ := msg["tool_calls"].([]interface{})
 	if len(toolCalls) > 0 {
 		lines = append(lines, "  🔧 工具调用:")
+		budget-- // 标题行
+		maxToolCalls := budget
+		if maxToolCalls < 1 {
+			maxToolCalls = 1
+		}
+		toolCallIdx := 0
 		for _, tc := range toolCalls {
+			toolCallIdx++
+			if toolCallIdx > maxToolCalls {
+				lines = append(lines, mutedStyle.Render(fmt.Sprintf("    ... [+%d 个工具调用已折叠]", len(toolCalls)-maxToolCalls)))
+				break
+			}
 			if tcMap, ok := tc.(map[string]interface{}); ok {
 				var name string
 				var argumentsStr string
@@ -1233,7 +1258,8 @@ func (m *Model) getSingleChoicePreview(singleChoice map[string]interface{}, mute
 
 // renderLastMessagePreview 渲染 request 最后一条消息的预览，限制高度和宽度防止撑破卡片。
 // availWidth 为可用列宽（单位：字符），用于控制内部 word-wrap；传 0 则使用全屏宽度。
-func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedStyle lipgloss.Style, availWidth int) []string {
+// availRows 为可用行数，用于动态计算折叠阈值充分利用屏幕空间；传 0 则使用默认值。
+func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedStyle lipgloss.Style, availWidth int, availRows int) []string {
 
 	var lines []string
 	if proxyReq == nil {
@@ -1253,7 +1279,14 @@ func (m *Model) renderLastMessagePreview(proxyReq map[string]interface{}, mutedS
 	contentType := detectMessageContentType(lastMsg)
 
 	// 根据 content 类型选择合适的渲染方式
-	const maxMsgLines = 3
+	// 动态计算最大显示行数：可用行数减去固定开销（标题行、空行、提示行）
+	maxMsgLines := 3
+	if availRows > 6 {
+		maxMsgLines = availRows - 2 // 只预留提示行和边距
+		if maxMsgLines < 3 {
+			maxMsgLines = 3
+		}
+	}
 	var flatLines []string
 	wrapWidth := availWidth - 6
 	if wrapWidth < 30 {
@@ -1462,7 +1495,7 @@ func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardSt
 
 		// 宽屏时左列约占一半宽度，传入实际可用列宽以正确控制 word-wrap
 		leftColWidth := m.width/2 - 4
-		leftCol = append(leftCol, m.renderLastMessagePreview(proxyReq, mutedStyle, leftColWidth)...)
+		leftCol = append(leftCol, m.renderLastMessagePreview(proxyReq, mutedStyle, leftColWidth, (m.height-8)/2-4)...)
 
 		var metaInfo []string
 		if proxyReq != nil {
@@ -1509,31 +1542,13 @@ func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardSt
 			if availForPreview < 4 {
 				availForPreview = 4
 			}
-			previewLines := m.getSingleChoicePreview(singleChoice, mutedStyle, valueStyle, availForPreview)
+			// 宽屏时右列约占一半宽度
+			rightColWidth := m.width/2 - 2
+			previewLines := m.getSingleChoicePreview(singleChoice, mutedStyle, valueStyle, availForPreview, rightColWidth)
 			rightCol = append(rightCol, previewLines...)
 		}
 
-		if respData != nil {
-			if usage, ok := respData["usage"].(map[string]interface{}); ok {
-				var pt, ct, tt float64
-				if p, ok := usage["prompt_tokens"].(float64); ok {
-					pt = p
-				}
-				if c, ok := usage["completion_tokens"].(float64); ok {
-					ct = c
-				}
-				if t, ok := usage["total_tokens"].(float64); ok {
-					tt = t
-				}
-				if tt > 0 {
-					rightCol = append(rightCol, fmt.Sprintf("  📊 tokens: %.0f (📝%.0f + ✍️%.0f)", tt, pt, ct))
-				}
-			}
-		}
-
-		if m.selectedEntry != nil && m.selectedEntry.TotalSpend > 0 {
-			rightCol = append(rightCol, fmt.Sprintf("  💰 $%.4f", m.selectedEntry.TotalSpend))
-		}
+		// tokens 和花费已移至顶部元信息显示
 
 		leftWidth := m.width / 2
 		rightWidth := m.width - leftWidth - 1
@@ -1587,7 +1602,7 @@ func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardSt
 		}
 
 		// 窄屏时单列，传入全屏可用宽度
-		requestLines = append(requestLines, m.renderLastMessagePreview(proxyReq, mutedStyle, m.width-4)...)
+		requestLines = append(requestLines, m.renderLastMessagePreview(proxyReq, mutedStyle, m.width-4, (m.height/2-8)-4)...)
 
 		var metaInfo []string
 		if proxyReq != nil {
@@ -1630,34 +1645,15 @@ func (m *Model) renderMainView(proxyReq, respData map[string]interface{}, cardSt
 		}
 		if singleChoice != nil {
 			// 窄屏时两个卡片纵向排列，response 卡片约占下半屏，减去固定行后的可用行数
-			availForPreview := (m.height/2 - 6) - 4
+			availForPreview := (m.height/2 - 8) - 4 // 更保守的预算
 			if availForPreview < 4 {
 				availForPreview = 4
 			}
-			previewLines := m.getSingleChoicePreview(singleChoice, mutedStyle, valueStyle, availForPreview)
+			previewLines := m.getSingleChoicePreview(singleChoice, mutedStyle, valueStyle, availForPreview, m.width)
 			responseLines = append(responseLines, previewLines...)
 		}
 
-		if respData != nil {
-			if usage, ok := respData["usage"].(map[string]interface{}); ok {
-				var pt, ct, tt float64
-				if p, ok := usage["prompt_tokens"].(float64); ok {
-					pt = p
-				}
-				if c, ok := usage["completion_tokens"].(float64); ok {
-					ct = c
-				}
-				if t, ok := usage["total_tokens"].(float64); ok {
-					tt = t
-				}
-				if tt > 0 {
-					responseLines = append(responseLines, fmt.Sprintf("  📊 tokens: %.0f (📝%.0f + ✍️%.0f)", tt, pt, ct))
-				}
-			}
-		}
-		if m.selectedEntry != nil && m.selectedEntry.TotalSpend > 0 {
-			responseLines = append(responseLines, fmt.Sprintf("  💰 $%.4f", m.selectedEntry.TotalSpend))
-		}
+		// tokens 和花费已移至顶部元信息显示
 
 		cardWidth := m.width - 4
 
@@ -2009,21 +2005,34 @@ func extractMessageContentFull(msg interface{}) string {
 }
 
 func extractThinking(text string) (thinking string, cleanText string) {
-	startIdx := strings.Index(text, "<think>")
-	if startIdx == -1 {
-		return "", text
+	// 提取所有嵌套的思考内容
+	var thinkingParts []string
+	clean := text
+
+	// 循环提取所有嵌套的<think>...</think>
+	for {
+		startIdx := strings.Index(clean, "<think>")
+		if startIdx == -1 {
+			break
+		}
+		endIdx := strings.Index(clean, "</think>")
+		if endIdx == -1 {
+			// 没有闭合标签，剩余都是思考
+			thinkingParts = append(thinkingParts, clean[startIdx+7:])
+			clean = clean[:startIdx]
+			break
+		}
+		thinkingParts = append(thinkingParts, clean[startIdx+7:endIdx])
+		clean = clean[:startIdx] + clean[endIdx+8:]
 	}
 
-	endIdx := strings.Index(text, "</think>")
-	if endIdx == -1 {
-		thinking = text[startIdx+7:]
-		cleanText = text[:startIdx]
-		return strings.TrimSpace(thinking), strings.TrimSpace(cleanText)
+	if len(thinkingParts) > 0 {
+		thinking = strings.TrimSpace(strings.Join(thinkingParts, "\n\n"))
+		cleanText = strings.TrimSpace(clean)
+		return thinking, cleanText
 	}
 
-	thinking = text[startIdx+7 : endIdx]
-	cleanText = text[:startIdx] + text[endIdx+8:]
-	return strings.TrimSpace(thinking), strings.TrimSpace(cleanText)
+	return "", text
 }
 
 func (m *Model) renderMessageSummary(msg interface{}, idx int, contentStyle, mutedStyle lipgloss.Style, focused bool) []string {
@@ -2441,7 +2450,7 @@ func (m *Model) renderSystemItem(sys interface{}, idx int, contentStyle, mutedSt
 	if text, ok := sysMap["text"].(string); ok && text != "" {
 		if m.detailState != nil && m.detailState.activeTab == "system" && m.detailState.itemDetailMode {
 			if m.detailState.markdownViewMode == "rendered" {
-				rendered := m.renderMarkdownFull(text)
+				rendered := m.renderMarkdownWithWidth(text, m.width-10)
 				lines = append(lines, rendered...)
 			} else {
 				// raw 模式：为了保持按行物理滚动的确定性，将 text 按 \n 拆分并逐行加入 lines
