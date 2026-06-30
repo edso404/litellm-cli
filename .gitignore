@@ -3,6 +3,7 @@ bin/
 litellm-cli
 litellm-cli-darwin-*
 litellm-cli-linux-*
+litellm-cli-windows-*
 
 # Release artifacts
 release/

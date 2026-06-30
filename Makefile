@@ -19,6 +19,7 @@ release:
 	GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o litellm-cli-darwin-amd64 .
 	GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o litellm-cli-darwin-arm64 .
 	GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o litellm-cli-linux-amd64 .
+	GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o litellm-cli-windows-amd64.exe .
 	@echo "✅ Release 构建完成:"
 	@ls -lh litellm-cli-*
 
@@ -26,7 +27,7 @@ release:
 clean:
 	rm -f litellm-cli
 	rm -rf release
-	rm -f litellm-cli-darwin-amd64 litellm-cli-darwin-arm64 litellm-cli-linux-amd64
+	rm -f litellm-cli-darwin-amd64 litellm-cli-darwin-arm64 litellm-cli-linux-amd64 litellm-cli-windows-amd64.exe
 
 # 测试
 test:
@@ -38,7 +39,7 @@ help:
 	@echo ""
 	@echo "  make build     - 构建二进制"
 	@echo "  make install   - 构建并安装到 ~/.local/bin/"
-	@echo "  make release   - 构建发布版本 (darwin/linux)"
+	@echo "  make release   - 构建发布版本 (darwin/linux/windows)"
 	@echo "  make clean     - 清理构建文件"
 	@echo "  make test      - 运行测试"
 	@echo ""

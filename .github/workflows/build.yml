@@ -23,8 +23,11 @@ jobs:
     needs: [test]
     strategy:
       matrix:
-        goos: [linux, darwin]
+        goos: [linux, darwin, windows]
         goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
 
     runs-on: ubuntu-latest
     steps:
@@ -35,13 +38,17 @@ jobs:
           check-latest: true
       - name: Build
         run: |
+          EXTENSION=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            EXTENSION=".exe"
+          fi
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
             go build -ldflags "-s -w" \
-            -o "litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}" .
+            -o "litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}${EXTENSION}" .
       - uses: actions/upload-artifact@v7
         with:
-          name: litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+          path: litellm-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }}
           if-no-files-found: error
 
   release:
