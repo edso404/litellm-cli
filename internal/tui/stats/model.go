@@ -22,6 +22,12 @@ const (
 	TimeRangeHalfYear TimeRangePreset = "halfyear" // 最近半年
 	TimeRangeYear     TimeRangePreset = "year"     // 今年
 	TimeRangeCustom   TimeRangePreset = "custom"   // 自定义
+
+	// 布局常量
+	MinWindowHeight    = 10 // 最小窗口高度
+	MinBarHeight       = 3  // 最小柱状图高度
+	CounterHeaderLines = 2  // header 占用行数
+	CounterFooterLines = 1  // footer 占用行数
 )
 
 // StatsClient defines the client interface required by the stats TUI
@@ -262,8 +268,9 @@ func (m *Model) View() string {
 	if counterWidth > 100 {
 		counterWidth = 100
 	}
-	sb.WriteString(m.renderCounterContent(counterWidth))
-	sb.WriteString("\n")
+	// counter 渲染现在在动态高度计算后进行（见下文）
+	// sb.WriteString(m.renderCounterContent(counterWidth))
+	// sb.WriteString("\n")
 
 	// 分隔线
 	if isLargeScreen {
@@ -271,24 +278,56 @@ func (m *Model) View() string {
 		sb.WriteString("\n")
 	}
 
-	// 计算可用高度，确保内容不会超出显示区域
-	// 固定行数：当 showHeader=true 时额外占用 header(2) 和 footer(1)
-	// 在 dashboard 中运行时：时间选择器(1) + 卡片(2) + 分隔线(1, 大屏) = 4-5 行
-	fixedLines := 1 + 2 + 1 // 时间选择器(1) + 卡片(2) + 分隔线(1)
-	if !isLargeScreen {
-		fixedLines--
-	}
+	// 动态计算可用高度，确保内容不会超出显示区域
+	availableHeight := m.height
 	if m.showHeader {
-		fixedLines += 3 // header(2) + footer(1)
+		availableHeight -= CounterHeaderLines + CounterFooterLines // header(2) + footer(1)
 	}
-	maxBarLines := m.height - fixedLines
-	if maxBarLines < 3 {
-		maxBarLines = 3
+	if availableHeight < MinWindowHeight {
+		availableHeight = MinWindowHeight
+	}
+
+	// 时间选择器固定 1 行，分隔线 1 行
+	fixedContentLines := 1 + 1 // 时间选择器(1) + 分隔线(1)
+	if !isLargeScreen {
+		fixedContentLines-- // 窄屏无分隔线
+	}
+
+	// 计算 counter 最大行数（基于列数和指标数）
+	// 6 个指标: 3列=2行, 2列=3行, 1列=6行
+	metricsCount := 6
+	cols := 3
+	if counterWidth < 80 {
+		cols = 2
+	}
+	if counterWidth < 40 {
+		cols = 1
+	}
+	counterMaxRows := (metricsCount + cols - 1) / cols // 向上取整
+
+	// counter 最大可用高度 = 可用高度 - 时间选择器 - 分隔线 - 最小 bar 高度
+	counterMaxHeight := availableHeight - fixedContentLines - MinBarHeight
+	if counterMaxRows > counterMaxHeight {
+		counterMaxRows = counterMaxHeight
+	}
+	if counterMaxRows < 1 {
+		counterMaxRows = 1
+	}
+
+	// 传递 maxRows 给 counter 渲染，获取实际渲染行数和内容
+	counterOutput, counterActualRows := m.renderCounterContent(counterWidth, counterMaxRows)
+	sb.WriteString(counterOutput)
+	sb.WriteString("\n")
+
+	// 计算 bar 可用高度
+	barAvailableHeight := availableHeight - fixedContentLines - counterActualRows
+	if barAvailableHeight < MinBarHeight {
+		barAvailableHeight = MinBarHeight
 	}
 
 	// 底部水平柱状图
 	barWidth := m.width - 4
-	sb.WriteString(m.renderBarContent(barWidth, maxBarLines))
+	sb.WriteString(m.renderBarContent(barWidth, barAvailableHeight))
 	sb.WriteString("\n")
 
 	// 底部帮助信息（独立运行时显示，嵌入 dashboard 时由 dashboard 提供 footer）
@@ -367,7 +406,7 @@ func (m *Model) renderFooter() string {
 	return mutedStyle.Render(tip)
 }
 
-func (m *Model) renderCounterContent(width int) string {
+func (m *Model) renderCounterContent(width int, maxRows int) (string, int) {
 	var sb strings.Builder
 
 	// 紧凑卡片样式（无边框紧凑显示）
@@ -406,6 +445,23 @@ func (m *Model) renderCounterContent(width int) string {
 		cols = 1
 	}
 
+	// 根据 maxRows 限制实际渲染的指标数量
+	visibleMetrics := metrics
+	maxVisibleRows := maxRows
+	if maxVisibleRows < 1 {
+		maxVisibleRows = 1
+	}
+	maxVisibleCount := maxVisibleRows * cols
+	if len(visibleMetrics) > maxVisibleCount {
+		visibleMetrics = metrics[:maxVisibleCount]
+	}
+
+	// 计算实际渲染行数
+	actualRows := (len(visibleMetrics) + cols - 1) / cols
+	if actualRows < 1 {
+		actualRows = 1
+	}
+
 	// 更短的卡片宽度
 	cardWidth := (width / cols) - 1
 	if cardWidth < 14 {
@@ -416,10 +472,10 @@ func (m *Model) renderCounterContent(width int) string {
 	}
 
 	// 渲染紧凑卡片（图标+标签+数值单行显示，无边框高度）
-	for row := 0; row < len(metrics); row += cols {
+	for row := 0; row < len(visibleMetrics); row += cols {
 		var rowCards []string
-		for col := 0; col < cols && row+col < len(metrics); col++ {
-			metric := metrics[row+col]
+		for col := 0; col < cols && row+col < len(visibleMetrics); col++ {
+			metric := visibleMetrics[row+col]
 			// 紧凑格式：标签 + 数值（单行）
 			card := labelStyle.Render(metric.label) + " " + valueStyle.Render(metric.value)
 			rowCards = append(rowCards, cardStyle.Width(cardWidth).Render(card))
@@ -428,7 +484,7 @@ func (m *Model) renderCounterContent(width int) string {
 		sb.WriteString("\n")
 	}
 
-	return sb.String()
+	return sb.String(), actualRows
 }
 
 func (m *Model) renderBarContent(width int, maxLines int) string {
