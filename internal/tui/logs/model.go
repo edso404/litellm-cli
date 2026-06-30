@@ -2016,8 +2016,8 @@ func extractThinking(text string) (thinking string, cleanText string) {
 			break
 		}
 		endIdx := strings.Index(clean, "</think>")
-		if endIdx == -1 {
-			// 没有闭合标签，剩余都是思考
+		if endIdx == -1 || endIdx < startIdx+7 {
+			// 没有闭合标签或顺序异常，剩余都是思考
 			thinkingParts = append(thinkingParts, clean[startIdx+7:])
 			clean = clean[:startIdx]
 			break
