@@ -165,33 +165,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 
-	case modelsLoadedMsg:
-		child, cmd := m.ModelsTab.Update(msg)
-		if modelsTab, ok := child.(*modelsTabModel); ok {
-			m.ModelsTab = modelsTab
-		}
-		return m, cmd
-
-	case teamsLoadedMsg:
-		child, cmd := m.TeamsTab.Update(msg)
-		if teamsTab, ok := child.(*teamsTabModel); ok {
-			m.TeamsTab = teamsTab
-		}
-		return m, cmd
-
-	case keyinfoLoadedMsg:
-		child, cmd := m.KeyinfoTab.Update(msg)
-		if keyinfoTab, ok := child.(*keyinfoTabModel); ok {
-			m.KeyinfoTab = keyinfoTab
-		}
-		return m, cmd
-
-	case loginLoadedMsg:
-		child, cmd := m.LoginTab.Update(msg)
-		if loginTab, ok := child.(*loginTabModel); ok {
-			m.LoginTab = loginTab
-		}
-		return m, cmd
 
 	case teamRankLoadedMsg:
 		child, cmd := m.TeamRank.Update(msg)

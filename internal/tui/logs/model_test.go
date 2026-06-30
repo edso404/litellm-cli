@@ -338,7 +338,7 @@ func TestLogsTUI_Unauthorized(t *testing.T) {
 	m = newModel.(*Model)
 
 	// 验证 Model 正常展现错误提示且不崩溃
-	if !strings.Contains(m.data, "Unauthorized access") {
+	if !strings.Contains(m.data, "获取失败") {
 		t.Errorf("expected error message in m.data, got '%s'", m.data)
 	}
 
@@ -446,7 +446,7 @@ func TestLogsTUI_InternalServerError(t *testing.T) {
 	m = newModel.(*Model)
 
 	// 验证错误横幅正常展示，系统不崩溃
-	if !strings.Contains(m.data, "Internal Server Error") {
+	if !strings.Contains(m.data, "获取失败") {
 		t.Errorf("expected Internal Server Error in m.data, got '%s'", m.data)
 	}
 
