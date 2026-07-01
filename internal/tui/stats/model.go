@@ -336,11 +336,17 @@ func (m *Model) View() string {
 	// 自适应高度：使用实际数据量和可用高度的较小值
 	displayData := m.adjustDataForGranularity()
 	dataCount := len(displayData)
-	// 基础显示行数：最多显示数据量，但不超过可用高度
-	barMaxHeight := dataCount
-	if barMaxHeight > barAvailableHeight {
-		barMaxHeight = barAvailableHeight
+
+	// 先限制到可用高度
+	barMaxHeight := barAvailableHeight
+	if barMaxHeight > dataCount {
+		barMaxHeight = dataCount
 	}
+	// 还需要限制最大高度，防止过多数据挤出 header/counter
+	if barMaxHeight > MaxBarHeight {
+		barMaxHeight = MaxBarHeight
+	}
+
 	// 留出行给 detail panel (1行) 和 hint (1行)
 	showHint := dataCount > barMaxHeight || m.scrollOffset > 0
 	barMaxHeight -= 1 // detail
