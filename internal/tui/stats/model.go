@@ -48,6 +48,7 @@ type Model struct {
 	metadata         api.Metadata     // 从 API 返回的聚合数据
 	aggregated       aggregatedMetrics
 	selectedBarIndex int
+	scrollOffset     int   // 虚拟滚动偏移量
 	width            int
 	height           int
 	quitting         bool
@@ -175,6 +176,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.data = msg.Data
+		m.scrollOffset = 0 // 重置滚动位置
 		m.calculateAggregated()
 		if len(m.data) > 0 && m.selectedBarIndex < 0 {
 			m.selectedBarIndex = 0
@@ -210,6 +212,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.data) > 0 {
 				if m.selectedBarIndex < len(m.data)-1 {
 					m.selectedBarIndex++
+					m.updateScrollOffset(m.height)
 				}
 			}
 			return m, nil
@@ -217,6 +220,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.data) > 0 {
 				if m.selectedBarIndex > 0 {
 					m.selectedBarIndex--
+					m.updateScrollOffset(m.height)
 				}
 			}
 			return m, nil
@@ -635,10 +639,14 @@ func (m *Model) renderBarContent(width int, maxLines int) string {
 		renderCount = maxLines
 	}
 
-	// 渲染每日的水平进度条
+	// 渲染每日的水平进度条（支持虚拟滚动）
 	for i := 0; i < renderCount; i++ {
-		r := displayData[i]
-		isSelected := i == m.selectedBarIndex
+		dataIndex := i + m.scrollOffset // 实际数据索引
+		if dataIndex >= len(displayData) {
+			break
+		}
+		r := displayData[dataIndex]
+		isSelected := dataIndex == m.selectedBarIndex
 
 		// 计算进度条宽度
 		var barWidth int
@@ -675,18 +683,41 @@ func (m *Model) renderBarContent(width int, maxLines int) string {
 	}
 
 	// 如果有更多数据未显示，添加提示
-	if len(displayData) > maxLines {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(fmt.Sprintf("  ... 还有 %d 条数据未显示", len(displayData)-maxLines)))
+	visibleEnd := m.scrollOffset + renderCount
+	if visibleEnd < len(displayData) {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(fmt.Sprintf("  ... 还有 %d 条数据（按 ↑↓ 滚动查看）", len(displayData)-visibleEnd)))
+		sb.WriteString("\n")
+	} else if m.scrollOffset > 0 {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(fmt.Sprintf("  ... 已滚动到末尾（%d/%d）", visibleEnd, len(displayData))))
 		sb.WriteString("\n")
 	}
 
-	// 选中项详情面板（显示在底部）
-	if m.selectedBarIndex >= 0 && m.selectedBarIndex < len(displayData) {
+	// 选中项详情面板（显示在底部，确保索引在可见范围内）
+	if m.selectedBarIndex >= m.scrollOffset && m.selectedBarIndex < visibleEnd {
 		sb.WriteString("\n")
 		sb.WriteString(m.renderDetailPanelCompact(displayData[m.selectedBarIndex], width))
 	}
 
 	return sb.String()
+}
+
+// updateScrollOffset 更新滚动偏移量，确保选中项在视图中
+func (m *Model) updateScrollOffset(maxLines int) {
+	if maxLines <= 0 {
+		return
+	}
+
+	// 如果选中项在可视区域上方，向上滚动
+	if m.selectedBarIndex < m.scrollOffset {
+		m.scrollOffset = m.selectedBarIndex
+		return
+	}
+
+	// 如果选中项在可视区域下方，向下滚动
+	visibleEnd := m.scrollOffset + maxLines
+	if m.selectedBarIndex >= visibleEnd {
+		m.scrollOffset = m.selectedBarIndex - maxLines + 1
+	}
 }
 
 // adjustDataForGranularity 根据手动选择的粒度调整数据
