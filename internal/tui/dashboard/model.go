@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -79,8 +80,12 @@ func (m *Model) initChildModels() {
 	m.Logs = logs.NewModel(clientAdapter{client: m.apiClient}, 5, "")
 	m.Logs.ShowHeader(false)
 	m.Logs.ShowFooter(false)
-	// Stats - 使用团队维度的数据，隐藏 header
-	m.Stats = stats.NewModel(statsClientAdapter{client: m.apiClient}, "", "team")
+	// Stats - 使用用户维度的数据（team 数据从 2026-05-20 开始，user 数据从 2026-01-01 开始），隐藏 header
+	now := time.Now()
+	endDate := now.Format("2006-01-02")
+	startDate := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	m.Stats = stats.NewModel(statsClientAdapter{client: m.apiClient}, startDate, endDate)
+	m.Stats.By = "user"
 	m.Stats.ShowHeader(false)
 	// Team Rank - 使用适配器
 	m.TeamRank = newTeamRankModel(NewTeamRankClientAdapter(m.apiClient))
@@ -410,8 +415,8 @@ type statsClientAdapter struct {
 	client *api.Client
 }
 
-func (a statsClientAdapter) GetUserDailyActivity(startDate, endDate string) (*api.UserDailyActivityResponse, error) {
-	return a.client.GetUserDailyActivity(startDate, endDate)
+func (a statsClientAdapter) GetUserDailyActivity(startDate, endDate string, pageSize int, page int) (*api.UserDailyActivityResponse, error) {
+	return a.client.GetUserDailyActivity(startDate, endDate, pageSize, page)
 }
 
 func (a statsClientAdapter) GetTeamDailyActivity(startDate, endDate string) (*api.TeamDailyActivityResponse, error) {

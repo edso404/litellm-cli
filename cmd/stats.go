@@ -76,7 +76,7 @@ func outputStatsJSON(c *client.Client, startDate, endDate string) {
 		jsonBytes, _ := json.MarshalIndent(resp, "", "  ")
 		fmt.Println(string(jsonBytes))
 	} else {
-		resp, err := c.GetUserDailyActivity(startDate, endDate)
+		resp, err := c.GetUserDailyActivity(startDate, endDate, 0, 1)
 		if err != nil {
 			log.Fatal(err)
 		}

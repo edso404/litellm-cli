@@ -145,12 +145,23 @@ type Metadata struct {
 	TotalCompletionTokens int64   `json:"total_completion_tokens"`
 	TotalTokens           int64   `json:"total_tokens"`
 	TotalAPIRequests      int64   `json:"total_api_requests"`
+	Page                  int     `json:"page"`
+	TotalPages            int     `json:"total_pages"`
+	HasMore               bool    `json:"has_more"`
 }
 
 // GetUserDailyActivity 获取用户每日活动
-func (c *Client) GetUserDailyActivity(startDate, endDate string) (*UserDailyActivityResponse, error) {
+// pageSize 为每页数量，0 表示使用默认；page 为页码，1-based
+func (c *Client) GetUserDailyActivity(startDate, endDate string, pageSize int, page int) (*UserDailyActivityResponse, error) {
+	query := fmt.Sprintf("/user/daily/activity?start_date=%s&end_date=%s", startDate, endDate)
+	if pageSize > 0 {
+		query += fmt.Sprintf("&page_size=%d", pageSize)
+	}
+	if page > 1 {
+		query += fmt.Sprintf("&page=%d", page)
+	}
 	var result UserDailyActivityResponse
-	err := c.Get(fmt.Sprintf("/user/daily/activity?start_date=%s&end_date=%s", startDate, endDate), &result)
+	err := c.Get(query, &result)
 	return &result, err
 }
 

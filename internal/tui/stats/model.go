@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbletea"
@@ -32,7 +33,7 @@ const (
 
 // StatsClient defines the client interface required by the stats TUI
 type StatsClient interface {
-	GetUserDailyActivity(startDate, endDate string) (*api.UserDailyActivityResponse, error)
+	GetUserDailyActivity(startDate, endDate string, pageSize int, page int) (*api.UserDailyActivityResponse, error)
 	GetTeamDailyActivity(startDate, endDate string) (*api.TeamDailyActivityResponse, error)
 }
 
@@ -43,6 +44,7 @@ type Model struct {
 	endDate          string
 	timeRangePreset  TimeRangePreset // 当前时间范围预设
 	data             []api.UserDailyActivity
+	metadata         api.Metadata     // 从 API 返回的聚合数据
 	aggregated       aggregatedMetrics
 	selectedBarIndex int
 	width            int
@@ -338,11 +340,17 @@ func (m *Model) View() string {
 	return sb.String()
 }
 
-// RefreshCmd performs asynchronous data loading
+// RefreshCmd performs asynchronous data loading with pagination support
 func (m *Model) RefreshCmd() tea.Cmd {
 	return func() tea.Msg {
 		var data []api.UserDailyActivity
+		var meta api.Metadata
 		var err error
+
+		// 根据时间范围动态调整 pageSize
+		// 大范围用更大的 pageSize 减少请求次数
+		pageSize := m.calculatePageSize()
+
 		if m.By == "team" {
 			var resp *api.TeamDailyActivityResponse
 			resp, err = m.client.GetTeamDailyActivity(m.startDate, m.endDate)
@@ -357,14 +365,100 @@ func (m *Model) RefreshCmd() tea.Cmd {
 				}
 			}
 		} else {
-			var resp *api.UserDailyActivityResponse
-			resp, err = m.client.GetUserDailyActivity(m.startDate, m.endDate)
-			if err == nil && resp != nil {
-				data = resp.Results
-			}
+			// 并发获取所有页面数据
+			data, meta, err = m.fetchAllPages(pageSize)
 		}
+		m.metadata = meta
 		return StatsLoadedMsg{Data: data, Error: err}
 	}
+}
+
+// calculatePageSize 根据时间范围计算合适的 pageSize
+func (m *Model) calculatePageSize() int {
+	start, err := time.Parse("2006-01-02", m.startDate)
+	if err != nil {
+		return 0 // 使用默认
+	}
+	end, err := time.Parse("2006-01-02", m.endDate)
+	if err != nil {
+		return 0
+	}
+
+	days := int(end.Sub(start).Hours() / 24)
+	if days <= 7 {
+		return 0 // 小范围用默认
+	}
+	// 大范围用更大的 pageSize
+	if days <= 31 {
+		return 100
+	}
+	if days <= 90 {
+		return 200
+	}
+	return 500 // 半年及以上的都用大 pageSize
+}
+
+// fetchAllPages 并发获取所有页面数据
+func (m *Model) fetchAllPages(pageSize int) ([]api.UserDailyActivity, api.Metadata, error) {
+	// 先获取第一页，确定总页数
+	firstResp, err := m.client.GetUserDailyActivity(m.startDate, m.endDate, pageSize, 1)
+	if err != nil {
+		return nil, api.Metadata{}, err
+	}
+	if firstResp == nil {
+		return nil, api.Metadata{}, err
+	}
+
+	totalPages := firstResp.Metadata.TotalPages
+	hasMore := firstResp.Metadata.HasMore
+
+	// 如果只有一页或没有更多数据，直接返回
+	if totalPages <= 1 && !hasMore {
+		return firstResp.Results, firstResp.Metadata, nil
+	}
+
+	// 并发获取剩余页面
+	var allResults []api.UserDailyActivity
+	allResults = append(allResults, firstResp.Results...)
+
+	if totalPages > 1 {
+		// 并发获取第 2 页到第 totalPages 页
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		results := make([][]api.UserDailyActivity, totalPages)
+		errors := make([]error, totalPages)
+
+		for page := 2; page <= totalPages; page++ {
+			wg.Add(1)
+			go func(p int) {
+				defer wg.Done()
+				resp, err := m.client.GetUserDailyActivity(m.startDate, m.endDate, pageSize, p)
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					errors[p-1] = err
+				} else if resp != nil {
+					results[p-1] = resp.Results
+				}
+			}(page)
+		}
+		wg.Wait()
+
+		// 检查是否有错误
+		for _, e := range errors {
+			if e != nil {
+				return nil, api.Metadata{}, e
+			}
+		}
+
+		// 合并结果
+		for _, r := range results {
+			allResults = append(allResults, r...)
+		}
+	}
+
+	// 使用第一页的 metadata（包含 total_spend 等聚合数据）
+	return allResults, firstResp.Metadata, nil
 }
 
 func (m *Model) calculateAggregated() {

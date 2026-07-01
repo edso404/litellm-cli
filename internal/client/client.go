@@ -17,8 +17,8 @@ func New(cfg *config.Config, opts ...api.ClientOption) *Client {
 	}
 }
 
-func (c *Client) GetUserDailyActivity(startDate, endDate string) (*api.UserDailyActivityResponse, error) {
-	return c.api.GetUserDailyActivity(startDate, endDate)
+func (c *Client) GetUserDailyActivity(startDate, endDate string, pageSize int, page int) (*api.UserDailyActivityResponse, error) {
+	return c.api.GetUserDailyActivity(startDate, endDate, pageSize, page)
 }
 
 func (c *Client) GetTeamDailyActivity(startDate, endDate string) (*api.TeamDailyActivityResponse, error) {
