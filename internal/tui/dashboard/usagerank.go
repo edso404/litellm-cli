@@ -332,15 +332,18 @@ func (m *usageRankModel) View() string {
 
 	var sb strings.Builder
 
-	// 时间范围和排序信息
+	// 渲染时间范围选择器
+	sb.WriteString(m.renderTimeRangeSelector())
+	sb.WriteString("\n")
+
+	// 排序信息
 	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
 	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	timeRangeStr := m.getTimeRangeDisplay()
 	sortStr := "Token"
 	if m.sortType == SortByRequests {
 		sortStr = "请求数"
 	}
-	sb.WriteString(greenStyle.Render(fmt.Sprintf("  时间范围: %s  |  排序: %s", timeRangeStr, sortStr)))
+	sb.WriteString(greenStyle.Render(fmt.Sprintf("  排序: %s (按 o 切换)", sortStr)))
 	sb.WriteString("\n\n")
 
 	// 计算可用高度
@@ -495,6 +498,44 @@ func (m *usageRankModel) getTimeRangeDisplay() string {
 	default:
 		return "最近7天"
 	}
+}
+
+// renderTimeRangeSelector 渲染时间范围选择器
+func (m *usageRankModel) renderTimeRangeSelector() string {
+	presets := []struct {
+		preset   UsageRankTimeRange
+		label    string
+		shortcut string
+	}{
+		{TimeRangeWeek, "最近7天", "1"},
+		{TimeRangeMonth, "最近30天", "2"},
+		{TimeRange3Months, "最近3个月", "3"},
+		{TimeRangeHalfYear, "最近半年", "4"},
+		{TimeRangeYear, "今年", "5"},
+	}
+
+	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	// 构建时间范围按钮
+	var buttons []string
+	for _, p := range presets {
+		isActive := m.timeRange == p.preset
+		btnStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Padding(0, 1)
+
+		if isActive {
+			btnStyle = btnStyle.
+				Foreground(lipgloss.Color("86")).
+				Bold(true)
+		}
+
+		btn := btnStyle.Render(fmt.Sprintf("[%s] %s", p.shortcut, p.label))
+		buttons = append(buttons, btn)
+	}
+
+	return greenStyle.Render("  时间范围: ") + mutedStyle.Render(strings.Join(buttons, " "))
 }
 
 // formatTokens 格式化 Token 数量
