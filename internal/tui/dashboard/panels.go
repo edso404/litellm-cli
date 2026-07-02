@@ -9,7 +9,7 @@ import (
 	"litellm-cli/internal/api"
 )
 
-// teamRankClientAdapter 适配器，将 *api.Client 适配为 TeamRankClient
+// teamRankClientAdapter 适配器，将 *api.Client 适配为 TeamRankClient 和 UsageRankClient
 type teamRankClientAdapter struct {
 	client *api.Client
 }
@@ -60,6 +60,16 @@ func (a *teamRankClientAdapter) GetTeamRank(teamID string) (*TeamRankResponse, e
 
 // NewTeamRankClientAdapter 创建适配器
 func NewTeamRankClientAdapter(client *api.Client) TeamRankClient {
+	return &teamRankClientAdapter{client: client}
+}
+
+// GetTeamDailyActivity 获取团队每日活动
+func (a *teamRankClientAdapter) GetTeamDailyActivity(startDate, endDate string) (*api.TeamDailyActivityResponse, error) {
+	return a.client.GetTeamDailyActivity(startDate, endDate)
+}
+
+// NewUsageRankClientAdapter 创建用量排行适配器（复用 teamRankClientAdapter）
+func NewUsageRankClientAdapter(client *api.Client) UsageRankClient {
 	return &teamRankClientAdapter{client: client}
 }
 

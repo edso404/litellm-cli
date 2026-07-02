@@ -14,6 +14,7 @@ import (
 // TeamRankClient 定义 Team Rank 数据获取的接口
 type TeamRankClient interface {
 	GetUserInfo() (*UserInfo, error)
+	GetTeamDailyActivity(startDate, endDate string) (*api.TeamDailyActivityResponse, error)
 }
 
 // UserInfo 用户信息
@@ -79,22 +80,42 @@ type teamRankModel struct {
 	loading         bool
 	err             string
 	quitting        bool
+
+	// Sub-tab 支持
+	activeSubTab   string // "key" = Key 排行, "usage" = 用量排行
+	usageRank      *usageRankModel
 }
 
 // newTeamRankModel 创建新的 Team Rank Model
 func newTeamRankModel(client TeamRankClient) *teamRankModel {
-	return &teamRankModel{
-		client:        client,
-		selectedIndex: 0,
-		width:         120,
-		height:        40,
-		loading:       true,
+	// TeamRankClient 已经被扩展为同时支持 UsageRankClient（通过 GetTeamDailyActivity 方法）
+	m := &teamRankModel{
+		client:         client,
+		selectedIndex:  0,
+		width:          120,
+		height:         40,
+		loading:        true,
+		activeSubTab:   "key", // 默认 Key 排行
 	}
+	// 初始化用量排行子模型（client 同时实现了 TeamRankClient 和 UsageRankClient）
+	m.usageRank = newUsageRankModel(client)
+	return m
 }
 
 // SetAPIClient 设置 API client
 func (m *teamRankModel) SetAPIClient(apiClient *api.Client) {
 	m.apiClient = apiClient
+	// 同时设置给用量排行子模型
+	if m.usageRank != nil {
+		m.usageRank.SetAPIClient(apiClient)
+	}
+}
+
+// SetCurrentUserID 设置当前用户 ID
+func (m *teamRankModel) SetCurrentUserID(userID string) {
+	if m.usageRank != nil {
+		m.usageRank.SetCurrentUserID(userID)
+	}
 }
 
 // Init 实现 tea.Model 接口
@@ -104,14 +125,47 @@ func (m *teamRankModel) Init() tea.Cmd {
 
 // Update 实现 tea.Model 接口
 func (m *teamRankModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// 如果在用量排行 sub-tab，委托给 usageRank 处理
+	if m.activeSubTab == "usage" && m.usageRank != nil {
+		// 同步窗口大小
+		if wsm, ok := msg.(tea.WindowSizeMsg); ok {
+			m.width = wsm.Width
+			m.height = wsm.Height
+		}
+
+		// Tab 键切换 sub-tab
+		if km, ok := msg.(tea.KeyMsg); ok {
+			if km.String() == "tab" {
+				m.cycleSubTab()
+				return m, m.usageRank.Init()
+			}
+		}
+
+		// 委托给 usageRank 处理
+		child, cmd := m.usageRank.Update(msg)
+		if um, ok := child.(*usageRankModel); ok {
+			m.usageRank = um
+			// 同步状态
+			m.loading = m.usageRank.loading
+			m.err = m.usageRank.err
+		}
+		return m, cmd
+	}
+
+	// Key 排行的处理逻辑（原有）
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
-		case "enter":
-			// 进入详情视图
+		case "tab", "enter":
+			// Tab 键切换 sub-tab
+			if msg.String() == "tab" {
+				m.cycleSubTab()
+				return m, m.usageRank.Init()
+			}
+			// enter 进入详情视图
 			if !m.detailView && m.data != nil && len(m.data.Ranks) > 0 && m.selectedIndex < len(m.data.Ranks) {
 				r := m.data.Ranks[m.selectedIndex]
 				if len(r.Keys) >= 1 {
@@ -169,6 +223,17 @@ func (m *teamRankModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View 实现 tea.Model 接口
 func (m *teamRankModel) View() string {
+	// 如果在用量排行 sub-tab，委托给 usageRank 渲染
+	if m.activeSubTab == "usage" && m.usageRank != nil {
+		var sb strings.Builder
+		// 渲染 sub-tab header
+		sb.WriteString(m.renderSubTabHeader())
+		sb.WriteString("\n")
+		sb.WriteString(m.usageRank.View())
+		return sb.String()
+	}
+
+	// Key 排行的渲染（原有逻辑）
 	if m.quitting {
 		return "👋 已退出\n"
 	}
@@ -524,4 +589,46 @@ func (m *teamRankModel) refreshCmd() tea.Cmd {
 type teamRankLoadedMsg struct {
 	Data  *TeamRankResponse
 	Error error
+}
+
+// cycleSubTab 切换 sub-tab
+func (m *teamRankModel) cycleSubTab() {
+	if m.activeSubTab == "key" {
+		m.activeSubTab = "usage"
+	} else {
+		m.activeSubTab = "key"
+	}
+	// 切换后重置状态
+	m.detailView = false
+	m.detailSelected = 0
+	m.selectedIndex = 0
+}
+
+// renderSubTabHeader 渲染 sub-tab header
+func (m *teamRankModel) renderSubTabHeader() string {
+	greenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("76"))
+	mutedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("76")).Bold(true)
+
+	var sb strings.Builder
+	sb.WriteString("  ")
+
+	if m.activeSubTab == "key" {
+		sb.WriteString(selectedStyle.Render(" [Key 排行] "))
+	} else {
+		sb.WriteString(greenStyle.Render(" [Key 排行] "))
+	}
+
+	sb.WriteString(" | ")
+
+	if m.activeSubTab == "usage" {
+		sb.WriteString(selectedStyle.Render(" [用量排行] "))
+	} else {
+		sb.WriteString(greenStyle.Render(" [用量排行] "))
+	}
+
+	sb.WriteString("  ")
+	sb.WriteString(mutedStyle.Render("按 Tab 切换"))
+
+	return sb.String()
 }
