@@ -28,7 +28,7 @@ var TabNames = map[string]string{
 var TabHelpTips = map[string]string{
 	"logs":      "↑↓: 切换 | enter: 详情 | c: 复制 | g/G: 跳转 | r: 刷新/重试 | esc: 返回 | ←/→: 切换 tab | q: 退出",
 	"stats":     "1-5: 时间范围 | d/w/m: 粒度 | ↑↓: 选择日期 | esc: 返回 | ←/→: 切换 tab | q: 退出",
-	"team_rank": "Tab: 切换 Key/用量排行 | t: 时间范围 | o: 排序 | ↑↓: 移动 | enter: 详情 | esc: 返回 | ←/→: 切换 tab | q: 退出",
+	"team_rank": "Tab: 切换 Key/用量排行 | 1-5: 时间范围 | o: 排序 | ↑↓: 移动 | enter: 详情 | esc: 返回 | ←/→: 切换 tab | q: 退出",
 	"keyinfo":   "esc: 返回 | ←/→: 切换 tab | q: 退出",
 }
 

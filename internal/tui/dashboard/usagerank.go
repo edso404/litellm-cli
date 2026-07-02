@@ -24,10 +24,12 @@ const (
 type UsageRankTimeRange string
 
 const (
-	TimeRangeToday     UsageRankTimeRange = "today"
-	TimeRangeYesterday UsageRankTimeRange = "yesterday"
-	TimeRangeWeek      UsageRankTimeRange = "week"
-	TimeRangeCustom    UsageRankTimeRange = "custom"
+	TimeRangeWeek      UsageRankTimeRange = "week"      // 最近一周
+	TimeRangeMonth     UsageRankTimeRange = "month"     // 最近一个月
+	TimeRange3Months   UsageRankTimeRange = "3months"   // 最近3个月
+	TimeRangeHalfYear  UsageRankTimeRange = "halfyear"  // 最近半年
+	TimeRangeYear      UsageRankTimeRange = "year"      // 今年
+	TimeRangeCustom    UsageRankTimeRange = "custom"    // 自定义
 )
 
 // UsageRankClient 定义用量排行数据获取的接口
@@ -90,19 +92,21 @@ type usageRankModel struct {
 func newUsageRankModel(client UsageRankClient) *usageRankModel {
 	now := time.Now()
 	today := now.Format("2006-01-02")
-	return &usageRankModel{
+	m := &usageRankModel{
 		client:         client,
 		selectedIndex:  0,
 		width:          120,
 		height:         40,
 		loading:        true,
-		timeRange:      TimeRangeToday,
+		timeRange:      TimeRangeWeek,
 		sortType:       SortByTokens,
-		startDate:      today,
-		endDate:        today,
 		keyAliasToUser: make(map[string]string),
 		userIDToEmail:  make(map[string]string),
 	}
+	// 设置默认日期范围
+	m.startDate = now.AddDate(0, 0, -7).Format("2006-01-02")
+	m.endDate = today
+	return m
 }
 
 // SetAPIClient 设置 API client
@@ -128,8 +132,28 @@ func (m *usageRankModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
+		case "1":
+			m.timeRange = TimeRangeWeek
+			m.loading = true
+			return m, m.refreshCmd()
+		case "2":
+			m.timeRange = TimeRangeMonth
+			m.loading = true
+			return m, m.refreshCmd()
+		case "3":
+			m.timeRange = TimeRange3Months
+			m.loading = true
+			return m, m.refreshCmd()
+		case "4":
+			m.timeRange = TimeRangeHalfYear
+			m.loading = true
+			return m, m.refreshCmd()
+		case "5":
+			m.timeRange = TimeRangeYear
+			m.loading = true
+			return m, m.refreshCmd()
 		case "t":
-			// 切换时间范围
+			// 循环切换时间范围（兼容旧快捷键）
 			m.cycleTimeRange()
 			m.loading = true
 			return m, m.refreshCmd()
@@ -199,29 +223,48 @@ func (m *usageRankModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// cycleTimeRange 循环切换时间范围
+// cycleTimeRange 循环切换时间范围（兼容旧快捷键）
 func (m *usageRankModel) cycleTimeRange() {
 	now := time.Now()
 	today := now.Format("2006-01-02")
-	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
-	weekAgo := now.AddDate(0, 0, -7).Format("2006-01-02")
 
 	switch m.timeRange {
-	case TimeRangeToday:
-		m.timeRange = TimeRangeYesterday
-		m.startDate = yesterday
-		m.endDate = yesterday
-	case TimeRangeYesterday:
-		m.timeRange = TimeRangeWeek
-		m.startDate = weekAgo
-		m.endDate = today
 	case TimeRangeWeek:
-		m.timeRange = TimeRangeToday
-		m.startDate = today
-		m.endDate = today
+		m.timeRange = TimeRangeMonth
+	case TimeRangeMonth:
+		m.timeRange = TimeRange3Months
+	case TimeRange3Months:
+		m.timeRange = TimeRangeHalfYear
+	case TimeRangeHalfYear:
+		m.timeRange = TimeRangeYear
+	case TimeRangeYear:
+		m.timeRange = TimeRangeWeek
 	default:
-		m.timeRange = TimeRangeToday
-		m.startDate = today
+		m.timeRange = TimeRangeWeek
+	}
+
+	// 更新日期范围
+	m.updateDateRange(today)
+}
+
+// updateDateRange 根据预设更新日期范围
+func (m *usageRankModel) updateDateRange(today string) {
+	now, _ := time.Parse("2006-01-02", today)
+	switch m.timeRange {
+	case TimeRangeWeek:
+		m.startDate = now.AddDate(0, 0, -7).Format("2006-01-02")
+		m.endDate = today
+	case TimeRangeMonth:
+		m.startDate = now.AddDate(0, -1, 0).Format("2006-01-02")
+		m.endDate = today
+	case TimeRange3Months:
+		m.startDate = now.AddDate(0, -3, 0).Format("2006-01-02")
+		m.endDate = today
+	case TimeRangeHalfYear:
+		m.startDate = now.AddDate(0, -6, 0).Format("2006-01-02")
+		m.endDate = today
+	case TimeRangeYear:
+		m.startDate = fmt.Sprintf("%d-01-01", now.Year())
 		m.endDate = today
 	}
 }
@@ -437,16 +480,20 @@ func (m *usageRankModel) View() string {
 // getTimeRangeDisplay 获取时间范围显示文本
 func (m *usageRankModel) getTimeRangeDisplay() string {
 	switch m.timeRange {
-	case TimeRangeToday:
-		return "今天"
-	case TimeRangeYesterday:
-		return "昨天"
 	case TimeRangeWeek:
 		return "最近7天"
+	case TimeRangeMonth:
+		return "最近30天"
+	case TimeRange3Months:
+		return "最近3个月"
+	case TimeRangeHalfYear:
+		return "最近半年"
+	case TimeRangeYear:
+		return "今年"
 	case TimeRangeCustom:
 		return m.startDate + " ~ " + m.endDate
 	default:
-		return "今天"
+		return "最近7天"
 	}
 }
 
