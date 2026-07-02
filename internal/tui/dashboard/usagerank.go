@@ -609,7 +609,14 @@ func (m *usageRankModel) refreshCmd() tea.Cmd {
 
 		for _, day := range activityResp.Results {
 			// 遍历 api_keys 获取每个 key 的数据
-			for keyAlias, keyData := range day.Breakdown.APIKeys {
+			// API 返回的 key 是实际的 api_key，key_alias 在 metadata 中
+			for key, keyData := range day.Breakdown.APIKeys {
+				// 获取 key_alias
+				keyAlias := key
+				if keyData.Metadata != nil && keyData.Metadata.KeyAlias != "" {
+					keyAlias = keyData.Metadata.KeyAlias
+				}
+
 				userID, ok := m.keyAliasToUser[keyAlias]
 				if !ok {
 					continue
